@@ -116,11 +116,15 @@ function PhonemePanel({ wordData, onClose }) {
               )
             })}
           </div>
-          {!isPerfect && (
+          {errorType === 'Omission' ? (
+            <p className="phoneme-note">
+              Word not detected in your recording — press Listen to hear how it should sound.
+            </p>
+          ) : !isPerfect ? (
             <p className="phoneme-note">
               Scores are approximate — Azure returned {phonemes?.length ?? 0} phonemes for {groups.length} letter groups.
             </p>
-          )}
+          ) : null}
         </>
       ) : (
         <p className="phoneme-empty">No breakdown available for this word.</p>
@@ -164,43 +168,57 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('')
   const [selectedWordIdx, setSelectedWordIdx] = useState(null)
   const [listenPhase, setListenPhase] = useState('idle')
-  const [history, setHistory] = useState([])
+  const [history, setHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('tanakh-history') ?? '[]') } catch { return [] }
+  })
   const [showHistory, setShowHistory] = useState(false)
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
   const mediaRecorderRef = useRef(null)
+  const sharedStreamRef = useRef(null)
   const audioChunksRef = useRef([])
   const blobPromiseRef = useRef(null) // resolves with Blob (or null) when recorder stops
   const prepareTimerRef = useRef(null)
 
+  // Persist history to localStorage; strip audioUrl — blob URLs don't survive reload
+  useEffect(() => {
+    try {
+      localStorage.setItem('tanakh-history',
+        JSON.stringify(history.map(({ audioUrl: _, ...rest }) => rest))
+      )
+    } catch { /* storage full or unavailable */ }
+  }, [history])
+
   const pasuk = psukim[pasukIdx]
 
-  function startMediaRecorder() {
+  // Opens one getUserMedia stream shared by both MediaRecorder (for playback) and Azure (for assessment).
+  // Returns the stream so it can be passed to startPronunciationAssessment.
+  async function startSharedStream() {
     audioChunksRef.current = []
-    // Create a promise that resolves with the blob once recorder.onstop fires.
-    // onResult awaits this so we never race ahead of the recorder.
     let resolveBlobPromise
     blobPromiseRef.current = new Promise(resolve => { resolveBlobPromise = resolve })
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    sharedStreamRef.current = stream
 
     const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
       .find(t => MediaRecorder.isTypeSupported(t)) || ''
 
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(stream => {
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
-        recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
-        recorder.onstop = () => {
-          const blob = audioChunksRef.current.length > 0
-            ? new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' })
-            : null
-          resolveBlobPromise(blob)
-          stream.getTracks().forEach(t => t.stop())
-        }
-        recorder.start(250)
-        mediaRecorderRef.current = recorder
-      })
-      .catch(() => resolveBlobPromise(null))
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+    recorder.onstop = () => {
+      const blob = audioChunksRef.current.length > 0
+        ? new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' })
+        : null
+      resolveBlobPromise(blob)
+      stream.getTracks().forEach(t => t.stop())
+      sharedStreamRef.current = null
+    }
+    recorder.start(250)
+    mediaRecorderRef.current = recorder
+
+    return stream
   }
 
   function stopMediaRecorder() {
@@ -214,6 +232,9 @@ export default function App() {
       mediaRecorderRef.current.onstop = () => {}  // discard blob
       mediaRecorderRef.current.stop()
     }
+    // onstop was blanked so tracks won't be stopped there — do it explicitly
+    sharedStreamRef.current?.getTracks().forEach(t => t.stop())
+    sharedStreamRef.current = null
     blobPromiseRef.current = null
     audioChunksRef.current = []
   }
@@ -239,7 +260,7 @@ export default function App() {
     })
   }
 
-  function handleRecord() {
+  async function handleRecord() {
     cancelTtsRef.current?.()
     setListenPhase('idle')
     setPhase('preparing')
@@ -247,7 +268,15 @@ export default function App() {
     setScores(null)
     setErrorMsg('')
     setSelectedWordIdx(null)
-    startMediaRecorder()
+
+    let stream
+    try {
+      stream = await startSharedStream()
+    } catch {
+      setPhase('error')
+      setErrorMsg('Microphone access denied. Please allow microphone access and try again.')
+      return
+    }
 
     // Fallback: show recording UI after 3s even if onReady hasn't fired
     prepareTimerRef.current = setTimeout(
@@ -278,7 +307,8 @@ export default function App() {
       () => {
         clearTimeout(prepareTimerRef.current)
         setPhase(p => p === 'preparing' ? 'recording' : p)
-      }
+      },
+      stream
     )
   }
 

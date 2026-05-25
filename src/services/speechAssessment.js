@@ -1,6 +1,54 @@
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk'
 
-export function startPronunciationAssessment(referenceText, onResult, onError, onReady) {
+// Wire a MediaStream into an Azure PushAudioInputStream so both the MediaRecorder
+// and Azure share one physical mic connection. Returns { audioConfig, cleanup }.
+function createAudioConfigFromStream(stream) {
+  const format = SpeechSDK.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1)
+  const pushStream = SpeechSDK.AudioInputStream.createPushStream(format)
+
+  const audioCtx = new AudioContext()
+  const source = audioCtx.createMediaStreamSource(stream)
+  // ScriptProcessorNode is deprecated but has universal support; AudioWorklet would
+  // require a separate worker file and complicates the build.
+  const processor = audioCtx.createScriptProcessor(4096, 1, 1)
+
+  processor.onaudioprocess = (e) => {
+    const input = e.inputBuffer.getChannelData(0)
+    const srcRate = audioCtx.sampleRate
+    const dstRate = 16000
+
+    // Downsample to 16 kHz if the hardware runs at a higher rate (44.1 / 48 kHz)
+    let samples = input
+    if (srcRate !== dstRate) {
+      const ratio = srcRate / dstRate
+      const outLen = Math.round(input.length / ratio)
+      samples = new Float32Array(outLen)
+      for (let i = 0; i < outLen; i++) {
+        samples[i] = input[Math.min(Math.round(i * ratio), input.length - 1)]
+      }
+    }
+
+    const pcm = new Int16Array(samples.length)
+    for (let i = 0; i < samples.length; i++) {
+      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(samples[i] * 32767)))
+    }
+    pushStream.write(pcm.buffer)
+  }
+
+  source.connect(processor)
+  processor.connect(audioCtx.destination)
+
+  function cleanup() {
+    processor.disconnect()
+    source.disconnect()
+    pushStream.close()
+    audioCtx.close()
+  }
+
+  return { audioConfig: SpeechSDK.AudioConfig.fromStreamInput(pushStream), cleanup }
+}
+
+export function startPronunciationAssessment(referenceText, onResult, onError, onReady, stream) {
   const key = import.meta.env.VITE_AZURE_SPEECH_KEY
   const region = import.meta.env.VITE_AZURE_SPEECH_REGION
 
@@ -14,7 +62,17 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
     true // enableMiscue: detect omissions and insertions vs reference text
   )
 
-  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput()
+  let audioCleanup = null
+  let audioConfig
+
+  if (stream) {
+    const result = createAudioConfigFromStream(stream)
+    audioConfig = result.audioConfig
+    audioCleanup = result.cleanup
+  } else {
+    audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput()
+  }
+
   const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig)
   pronunciationConfig.applyTo(recognizer)
 
@@ -57,6 +115,7 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
   recognizer.startContinuousRecognitionAsync(
     () => { onReady?.() },
     (err) => {
+      audioCleanup?.()
       onError(typeof err === 'string' ? err : 'Microphone access failed. Check your browser permissions.')
       recognizer.close()
     }
@@ -66,6 +125,7 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
     stop() {
       recognizer.stopContinuousRecognitionAsync(
         () => {
+          audioCleanup?.()
           if (allWords.length > 0 && latestScores) {
             onResult({ words: allWords, scores: latestScores })
           } else {
@@ -74,6 +134,7 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
           recognizer.close()
         },
         (err) => {
+          audioCleanup?.()
           onError(typeof err === 'string' ? err : 'Failed to stop recording.')
           recognizer.close()
         }
@@ -81,8 +142,8 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
     },
     cancel() {
       recognizer.stopContinuousRecognitionAsync(
-        () => recognizer.close(),
-        () => recognizer.close()
+        () => { audioCleanup?.(); recognizer.close() },
+        () => { audioCleanup?.(); recognizer.close() }
       )
     },
   }

@@ -1,0 +1,714 @@
+/* ── Shell / sidebar layout ──────────────── */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+}
+
+.app-shell .app {
+  flex: 1;
+  min-width: 0;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ─────────────────────────────── */
+.app-header {
+  background: #7c1d1d;
+  color: #fef9f0;
+  padding: 1.5rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.app-header-content {
+  text-align: left;
+}
+
+.app-header h1 {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 2rem;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.4rem;
+  font-weight: 700;
+}
+
+.app-header p {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin: 0;
+}
+
+/* ── Main layout ─────────────────────────── */
+.app-main {
+  max-width: 720px;
+  width: 100%;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ── Verse selector ──────────────────────── */
+.pasuk-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pasuk-selector label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #57534e;
+  white-space: nowrap;
+}
+
+.pasuk-selector select {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 8px;
+  background: white;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: #1c1917;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+}
+
+.pasuk-selector select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Pasuk card ──────────────────────────── */
+.pasuk-card {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border: 1px solid #e7e5e4;
+}
+
+.hebrew-text {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 2rem;
+  line-height: 2.2;
+  color: #1c1917;
+  margin-bottom: 1.25rem;
+  word-spacing: 0.15em;
+}
+
+.pasuk-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f5f5f4;
+}
+
+.pasuk-meta-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pasuk-ref {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 0.95rem;
+  color: #7c1d1d;
+  font-weight: 700;
+  direction: rtl;
+}
+
+.btn-listen {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 20px;
+  border: 1.5px solid #d6d3d1;
+  background: white;
+  color: #57534e;
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-listen:hover:not(:disabled) {
+  border-color: #7c1d1d;
+  color: #7c1d1d;
+}
+
+.btn-listen--active {
+  border-color: #7c1d1d;
+  color: #7c1d1d;
+  background: #fef2f2;
+}
+
+.btn-listen:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.listen-icon {
+  font-size: 0.65rem;
+}
+
+
+.pasuk-translation {
+  font-size: 0.88rem;
+  color: #78716c;
+  font-style: italic;
+  line-height: 1.5;
+  display: block;
+}
+
+/* ── Word chips ──────────────────────────── */
+.word-chip {
+  display: inline;
+  margin-inline-start: 0.3em;
+  cursor: pointer;
+}
+
+.word-chip:first-child {
+  margin-inline-start: 0;
+}
+
+.word-text {
+  padding-bottom: 2px;
+  transition: background 0.1s;
+}
+
+.word-chip--selected .word-text {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.click-hint {
+  font-size: 0.78rem;
+  color: #a8a29e;
+  text-align: center;
+  margin: 0.5rem 0 0;
+}
+
+/* ── Phoneme panel ───────────────────────── */
+.phoneme-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border: 1px solid #e7e5e4;
+}
+
+.phoneme-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.phoneme-panel-word {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 1.6rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.phoneme-panel-badge {
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: 20px;
+  flex-shrink: 0;
+}
+
+.btn-word-listen {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.65rem;
+  margin-left: auto;
+}
+
+.phoneme-panel-close {
+  background: none;
+  border: none;
+  color: #a8a29e;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+.phoneme-panel-close:hover { color: #57534e; }
+
+.char-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.char-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 2rem;
+}
+
+.char-glyph {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 2rem;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.char-score {
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+}
+
+.phoneme-note {
+  font-size: 0.75rem;
+  color: #a8a29e;
+  margin-top: 0.25rem;
+  text-align: center;
+}
+
+.phoneme-empty {
+  font-size: 0.85rem;
+  color: #78716c;
+  font-style: italic;
+}
+
+/* ── Controls ────────────────────────────── */
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60px;
+}
+
+.btn {
+  padding: 0.7rem 1.6rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.95rem;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-record {
+  background: #7c1d1d;
+  color: white;
+  padding: 0.85rem 2rem;
+  font-size: 1rem;
+}
+
+.btn-record:hover:not(:disabled) { opacity: 0.9; }
+
+.btn-record:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-done {
+  background: #7c1d1d;
+  color: white;
+}
+
+.btn-done:hover { opacity: 0.9; }
+
+.btn-cancel {
+  background: #e7e5e4;
+  color: #57534e;
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+}
+
+.recording-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.btn-reset {
+  background: #f5f0e8;
+  color: #57534e;
+  border: 1px solid #d6d3d1;
+}
+
+.btn-reset:hover { background: #e7e5e4; }
+
+.record-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fca5a5;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.record-dot.active { background: #ef4444; }
+
+.recording-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.recording-state p {
+  font-size: 0.88rem;
+  color: #57534e;
+  margin: 0;
+}
+
+.recording-indicator {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.2);
+  animation: pulse 1.5s ease-out infinite;
+}
+
+@keyframes pulse {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.preparing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: #57534e;
+  font-size: 0.9rem;
+}
+
+.preparing-state p {
+  margin: 0;
+}
+
+.processing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: #57534e;
+  font-size: 0.9rem;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e7e5e4;
+  border-top-color: #7c1d1d;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.error-msg {
+  font-size: 0.88rem;
+  color: #dc2626;
+  text-align: center;
+  max-width: 360px;
+  margin: 0;
+}
+
+/* ── Score panel ─────────────────────────── */
+.score-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border: 1px solid #e7e5e4;
+  text-align: center;
+}
+
+.score-rings {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.score-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.score-ring-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #78716c;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.score-hint {
+  font-size: 0.8rem;
+  color: #a8a29e;
+  margin: 0;
+}
+
+.score-note {
+  font-size: 0.78rem;
+  color: #78716c;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── History toggle button (in header) ───── */
+.btn-history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  border: 1.5px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.1);
+  color: #fef9f0;
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.btn-history-toggle:hover { background: rgba(255,255,255,0.2); }
+.btn-history-toggle--active { background: rgba(255,255,255,0.25); }
+
+.history-toggle-icon { font-size: 0.9rem; }
+
+.history-count {
+  background: rgba(255,255,255,0.3);
+  border-radius: 10px;
+  padding: 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* ── History sidebar ─────────────────────── */
+.history-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: white;
+  border-left: 1px solid #e7e5e4;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+}
+
+.history-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #f5f5f4;
+}
+
+.history-sidebar-header h2 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1c1917;
+  margin: 0;
+}
+
+.history-close {
+  background: none;
+  border: none;
+  color: #a8a29e;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+.history-close:hover { color: #57534e; }
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-empty {
+  font-size: 0.85rem;
+  color: #a8a29e;
+  text-align: center;
+  padding: 1rem;
+  font-style: italic;
+}
+
+/* ── History entry ───────────────────────── */
+.history-entry {
+  background: #f9f8f6;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e7e5e4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow: hidden;
+}
+
+.history-entry-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.history-entry-ref {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #7c1d1d;
+}
+
+.history-attempt-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #57534e;
+  white-space: nowrap;
+}
+
+.history-entry-time {
+  font-size: 0.72rem;
+  color: #a8a29e;
+  white-space: nowrap;
+}
+
+.history-score-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.history-score-badge {
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 700;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.history-sub-scores {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.history-sub-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.history-sub-label {
+  color: #a8a29e;
+  font-weight: 400;
+}
+
+.btn-history-play {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1.5px solid #d6d3d1;
+  background: white;
+  color: #57534e;
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-history-play:hover { border-color: #7c1d1d; color: #7c1d1d; }
+.btn-history-play--active { border-color: #7c1d1d; color: #7c1d1d; background: #fef2f2; }
+
+.history-words {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 0.95rem;
+  line-height: 1.9;
+  word-spacing: 0.1em;
+  overflow: hidden;
+  max-height: 3.8rem; /* ~2 lines */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.history-word {
+  display: inline;
+  margin-left: 0.25em;
+  padding-bottom: 1px;
+}

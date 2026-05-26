@@ -172,6 +172,10 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('tanakh-history') ?? '[]') } catch { return [] }
   })
   const [showHistory, setShowHistory] = useState(false)
+  const [viewingHistoryEntry, setViewingHistoryEntry] = useState(null)
+  const [historyPlayPhase, setHistoryPlayPhase] = useState('idle')
+  const [currentAudioUrl, setCurrentAudioUrl] = useState(null)
+  const [currentPlayPhase, setCurrentPlayPhase] = useState('idle')
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
@@ -180,6 +184,8 @@ export default function App() {
   const audioChunksRef = useRef([])
   const blobPromiseRef = useRef(null) // resolves with Blob (or null) when recorder stops
   const prepareTimerRef = useRef(null)
+  const historyAudioRef = useRef(null)
+  const currentAudioRef = useRef(null)
 
   // Persist history to localStorage; strip audioUrl — blob URLs don't survive reload
   useEffect(() => {
@@ -191,6 +197,62 @@ export default function App() {
   }, [history])
 
   const pasuk = psukim[pasukIdx]
+  const verseHistory = history.filter(e => e.pasukIdx === pasukIdx)
+
+  // When a history entry is selected, the main view shows its data instead of the current session
+  const displayWords = viewingHistoryEntry?.wordResults ?? wordResults
+  const displayScores = viewingHistoryEntry?.scores ?? scores
+  const viewingAttemptNumber = viewingHistoryEntry
+    ? verseHistory.length - verseHistory.findIndex(e => e.id === viewingHistoryEntry.id)
+    : null
+
+  function handleSelectHistoryEntry(entry) {
+    historyAudioRef.current?.pause()
+    historyAudioRef.current = null
+    setHistoryPlayPhase('idle')
+    setViewingHistoryEntry(entry)
+    setSelectedWordIdx(null)
+  }
+
+  function handleExitHistoryView() {
+    historyAudioRef.current?.pause()
+    historyAudioRef.current = null
+    setHistoryPlayPhase('idle')
+    setViewingHistoryEntry(null)
+    setSelectedWordIdx(null)
+  }
+
+  function handleCurrentAudioPlay() {
+    if (currentPlayPhase !== 'idle') {
+      currentAudioRef.current?.pause()
+      currentAudioRef.current = null
+      setCurrentPlayPhase('idle')
+      return
+    }
+    if (!currentAudioUrl) return
+    setCurrentPlayPhase('playing')
+    const audio = new Audio(currentAudioUrl)
+    audio.onended = () => { currentAudioRef.current = null; setCurrentPlayPhase('idle') }
+    audio.onerror = () => { currentAudioRef.current = null; setCurrentPlayPhase('idle') }
+    currentAudioRef.current = audio
+    audio.play().catch(() => setCurrentPlayPhase('idle'))
+  }
+
+  function handleHistoryAudioPlay() {
+    if (historyPlayPhase !== 'idle') {
+      historyAudioRef.current?.pause()
+      historyAudioRef.current = null
+      setHistoryPlayPhase('idle')
+      return
+    }
+    if (!viewingHistoryEntry?.audioUrl) return
+    setHistoryPlayPhase('playing')
+    const audio = new Audio(viewingHistoryEntry.audioUrl)
+    audio.onended = () => { historyAudioRef.current = null; setHistoryPlayPhase('idle') }
+    audio.onerror = () => { historyAudioRef.current = null; setHistoryPlayPhase('idle') }
+    historyAudioRef.current = audio
+    audio.play().catch(() => setHistoryPlayPhase('idle'))
+  }
 
   // Opens one getUserMedia stream shared by both MediaRecorder (for playback) and Azure (for assessment).
   // Returns the stream so it can be passed to startPronunciationAssessment.
@@ -291,6 +353,7 @@ export default function App() {
         const reconciled = reconcileWords(pasuk.text, words)
         ;(blobPromiseRef.current ?? Promise.resolve(null)).then(blob => {
           const audioUrl = blob ? URL.createObjectURL(blob) : null
+          setCurrentAudioUrl(audioUrl)
           addToHistory(reconciled, scores, audioUrl)
           setShowHistory(true)
         })
@@ -326,6 +389,10 @@ export default function App() {
   }
 
   function handleReset() {
+    currentAudioRef.current?.pause()
+    currentAudioRef.current = null
+    setCurrentPlayPhase('idle')
+    setCurrentAudioUrl(null)
     setPhase('idle')
     setWordResults([])
     setScores(null)
@@ -379,6 +446,7 @@ export default function App() {
               onChange={(e) => {
                 setPasukIdx(Number(e.target.value))
                 handleReset()
+                handleExitHistoryView()
                 cancelTtsRef.current?.()
                 setListenPhase('idle')
               }}
@@ -392,21 +460,21 @@ export default function App() {
 
           <div className="pasuk-card">
             <div className="hebrew-text" dir="rtl" lang="he">
-              {phase === 'done' && wordResults.length > 0
-                ? wordResults.map((w, i) => (
+              {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0
+                ? displayWords.map((w, i) => (
                     <span key={i}>
                       <WordChip
                         {...w}
                         isSelected={selectedWordIdx === i}
                         onClick={() => handleWordClick(i)}
                       />
-                      {i < wordResults.length - 1 ? ' ' : null}
+                      {i < displayWords.length - 1 ? ' ' : null}
                     </span>
                   ))
                 : <span>{pasuk.text}</span>
               }
             </div>
-            {phase === 'done' && wordResults.length > 0 && (
+            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && (
               <p className="click-hint">Click any highlighted word to see phoneme breakdown</p>
             )}
             <div className="pasuk-meta">
@@ -427,72 +495,104 @@ export default function App() {
             </div>
           </div>
 
-          {selectedWordIdx !== null && wordResults[selectedWordIdx] && (
+          {selectedWordIdx !== null && displayWords[selectedWordIdx] && (
             <PhonemePanel
-              wordData={wordResults[selectedWordIdx]}
+              wordData={displayWords[selectedWordIdx]}
               onClose={() => setSelectedWordIdx(null)}
             />
           )}
 
           <div className="controls">
-            {phase === 'idle' && (
-              <button
-                className="btn btn-record"
-                onClick={handleRecord}
-                disabled={listenPhase !== 'idle'}
-              >
-                <span className="record-dot" /> Start Recording
-              </button>
-            )}
-
-            {phase === 'preparing' && (
-              <div className="preparing-state">
-                <div className="spinner" />
-                <p>Starting microphone…</p>
-                <button className="btn btn-cancel" onClick={handleCancel}>Cancel</button>
-              </div>
-            )}
-
-            {phase === 'recording' && (
-              <div className="recording-state">
-                <div className="recording-indicator">
-                  <span className="pulse-ring" />
-                  <span className="record-dot active" />
-                </div>
-                <p>Read the verse aloud</p>
-                <div className="recording-actions">
-                  <button className="btn btn-done" onClick={handleDone}>Done Reading</button>
-                  <button className="btn btn-cancel" onClick={handleCancel}>Cancel</button>
+            {viewingHistoryEntry ? (
+              <div className="history-review-state">
+                <p className="history-review-label">Viewing Attempt #{viewingAttemptNumber}</p>
+                <div className="history-review-actions">
+                  {viewingHistoryEntry.audioUrl && (
+                    <button
+                      className={`btn-listen ${historyPlayPhase !== 'idle' ? 'btn-listen--active' : ''}`}
+                      onClick={handleHistoryAudioPlay}
+                    >
+                      <span className="listen-icon">{historyPlayPhase !== 'idle' ? '■' : '▶'}</span>
+                      {historyPlayPhase !== 'idle' ? 'Stop' : 'Play Recording'}
+                    </button>
+                  )}
+                  <button className="btn btn-reset" onClick={handleExitHistoryView}>← Back</button>
+                  <button className="btn btn-record" onClick={() => { handleExitHistoryView(); handleReset(); }}>↺ Try Again</button>
                 </div>
               </div>
-            )}
+            ) : (
+              <>
+                {phase === 'idle' && (
+                  <button
+                    className="btn btn-record"
+                    onClick={handleRecord}
+                    disabled={listenPhase !== 'idle'}
+                  >
+                    <span className="record-dot" /> Start Recording
+                  </button>
+                )}
 
-            {phase === 'processing' && (
-              <div className="processing-state">
-                <div className="spinner" />
-                <p>Analyzing pronunciation…</p>
-              </div>
-            )}
+                {phase === 'preparing' && (
+                  <div className="preparing-state">
+                    <div className="spinner" />
+                    <p>Starting microphone…</p>
+                    <button className="btn btn-cancel" onClick={handleCancel}>Cancel</button>
+                  </div>
+                )}
 
-            {phase === 'done' && (
-              <button className="btn btn-reset" onClick={handleReset}>↺ Try Again</button>
-            )}
+                {phase === 'recording' && (
+                  <div className="recording-state">
+                    <div className="recording-indicator">
+                      <span className="pulse-ring" />
+                      <span className="record-dot active" />
+                    </div>
+                    <p>Read the verse aloud</p>
+                    <div className="recording-actions">
+                      <button className="btn btn-done" onClick={handleDone}>Done Reading</button>
+                      <button className="btn btn-cancel" onClick={handleCancel}>Cancel</button>
+                    </div>
+                  </div>
+                )}
 
-            {phase === 'error' && (
-              <div className="error-state">
-                <p className="error-msg">{errorMsg}</p>
-                <button className="btn btn-reset" onClick={handleReset}>↺ Try Again</button>
-              </div>
+                {phase === 'processing' && (
+                  <div className="processing-state">
+                    <div className="spinner" />
+                    <p>Analyzing pronunciation…</p>
+                  </div>
+                )}
+
+                {phase === 'done' && (
+                  <div className="done-actions">
+                    {currentAudioUrl && (
+                      <button
+                        className={`btn-listen ${currentPlayPhase !== 'idle' ? 'btn-listen--active' : ''}`}
+                        onClick={handleCurrentAudioPlay}
+                      >
+                        <span className="listen-icon">{currentPlayPhase !== 'idle' ? '■' : '▶'}</span>
+                        {currentPlayPhase !== 'idle' ? 'Stop' : 'Play Recording'}
+                      </button>
+                    )}
+                    <button className="btn btn-reset" onClick={handleReset}>↺ Try Again</button>
+                  </div>
+                )}
+
+                {phase === 'error' && (
+                  <div className="error-state">
+                    <p className="error-msg">{errorMsg}</p>
+                    <button className="btn btn-reset" onClick={handleReset}>↺ Try Again</button>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {scores && (
+          {displayScores && (
             <div className="score-panel">
               <div className="score-rings">
-                <ScoreRing value={scores.pronunciation} label="Overall" />
-                <ScoreRing value={scores.accuracy} label="Accuracy" />
-                <ScoreRing value={scores.fluency} label="Fluency" />
-                <ScoreRing value={scores.completeness} label="Complete" />
+                <ScoreRing value={displayScores.pronunciation} label="Overall" />
+                <ScoreRing value={displayScores.accuracy} label="Accuracy" />
+                <ScoreRing value={displayScores.fluency} label="Fluency" />
+                <ScoreRing value={displayScores.completeness} label="Complete" />
               </div>
               <p className="score-note">
                 Scored against <strong>Modern Israeli (Sephardic)</strong> pronunciation — Biblical/Ashkenazi readers may score lower on some phonemes.
@@ -504,8 +604,10 @@ export default function App() {
 
       {showHistory && (
         <HistorySidebar
-          history={history.filter(e => e.pasukIdx === pasukIdx)}
-          onClose={() => setShowHistory(false)}
+          history={verseHistory}
+          selectedId={viewingHistoryEntry?.id ?? null}
+          onSelect={handleSelectHistoryEntry}
+          onClose={() => { handleExitHistoryView(); setShowHistory(false) }}
         />
       )}
     </div>

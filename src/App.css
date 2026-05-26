@@ -355,6 +355,14 @@
   align-items: center;
 }
 
+.done-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .btn-reset {
   background: #f5f0e8;
   color: #57534e;
@@ -603,20 +611,25 @@
   flex-direction: column;
   gap: 0.6rem;
   overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.history-entry:hover {
+  border-color: #c4b5b5;
+  background: #f5f0e8;
+}
+
+.history-entry--selected {
+  border-color: #7c1d1d;
+  background: #fef9f6;
 }
 
 .history-entry-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-}
-
-.history-entry-ref {
-  font-family: 'Frank Ruhl Libre', serif;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #7c1d1d;
 }
 
 .history-attempt-label {
@@ -626,69 +639,37 @@
   white-space: nowrap;
 }
 
-.history-entry-time {
-  font-size: 0.72rem;
-  color: #a8a29e;
-  white-space: nowrap;
-}
-
-.history-score-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
 .history-score-badge {
   color: white;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  width: 2.2rem;
-  height: 2.2rem;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 20px;
   flex-shrink: 0;
 }
 
-.history-sub-scores {
-  display: flex;
-  gap: 0.5rem;
-  flex: 1;
-}
-
-.history-sub-score {
+/* ── History review controls (main view) ─── */
+.history-review-state {
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-size: 0.72rem;
+  gap: 0.75rem;
+}
+
+.history-review-label {
+  font-size: 0.85rem;
   font-weight: 600;
-  line-height: 1.3;
+  color: #7c1d1d;
+  margin: 0;
 }
 
-.history-sub-label {
-  color: #a8a29e;
-  font-weight: 400;
-}
-
-.btn-history-play {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  border: 1.5px solid #d6d3d1;
-  background: white;
-  color: #57534e;
-  font-size: 0.7rem;
-  cursor: pointer;
+.history-review-actions {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   justify-content: center;
-  flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
 }
-
-.btn-history-play:hover { border-color: #7c1d1d; color: #7c1d1d; }
-.btn-history-play--active { border-color: #7c1d1d; color: #7c1d1d; background: #fef2f2; }
 
 .history-words {
   font-family: 'Frank Ruhl Libre', serif;

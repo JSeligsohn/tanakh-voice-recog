@@ -362,7 +362,7 @@ export default function App() {
           const audioUrl = blob ? URL.createObjectURL(blob) : null
           setCurrentAudioUrl(audioUrl)
           addToHistory(reconciled, scores, audioUrl, segmentsRef)
-          setShowHistory(true)
+          if (window.innerWidth > 640) setShowHistory(true)
         })
         setPhase('done')
         setScores(scores)
@@ -638,12 +638,19 @@ export default function App() {
       </div>
 
       {showHistory && (
-        <HistorySidebar
-          history={verseHistory}
-          selectedId={viewingHistoryEntry?.id ?? null}
-          onSelect={handleSelectHistoryEntry}
-          onClose={() => { handleExitHistoryView(); setShowHistory(false) }}
-        />
+        <>
+          <button
+            className="sidebar-backdrop"
+            aria-label="Close sidebar"
+            onClick={() => { handleExitHistoryView(); setShowHistory(false) }}
+          />
+          <HistorySidebar
+            history={verseHistory}
+            selectedId={viewingHistoryEntry?.id ?? null}
+            onSelect={handleSelectHistoryEntry}
+            onClose={() => { handleExitHistoryView(); setShowHistory(false) }}
+          />
+        </>
       )}
     </div>
   )

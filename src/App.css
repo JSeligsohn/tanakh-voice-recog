@@ -512,6 +512,75 @@
   line-height: 1.5;
 }
 
+/* ── Debug panel ─────────────────────────── */
+.debug-panel {
+  border-radius: 10px;
+  border: 1px solid #e7e5e4;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+}
+
+.debug-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  background: #f5f0e8;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #57534e;
+  text-align: left;
+}
+
+.debug-toggle:hover { background: #ede8e0; }
+
+.debug-toggle-icon { font-size: 0.7rem; }
+
+.debug-count {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #a8a29e;
+}
+
+.debug-body {
+  background: #1c1917;
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.debug-segment {
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-segment-label {
+  padding: 0.35rem 1rem;
+  background: #292524;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #a8a29e;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.debug-pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: #d6d3d1;
+  white-space: pre;
+  overflow-x: auto;
+}
+
 /* ── History toggle button (in header) ───── */
 .btn-history-toggle {
   display: inline-flex;

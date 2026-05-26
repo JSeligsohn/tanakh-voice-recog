@@ -176,6 +176,8 @@ export default function App() {
   const [historyPlayPhase, setHistoryPlayPhase] = useState('idle')
   const [currentAudioUrl, setCurrentAudioUrl] = useState(null)
   const [currentPlayPhase, setCurrentPlayPhase] = useState('idle')
+  const [currentRawSegments, setCurrentRawSegments] = useState([])
+  const [showDebug, setShowDebug] = useState(false)
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
@@ -202,6 +204,7 @@ export default function App() {
   // When a history entry is selected, the main view shows its data instead of the current session
   const displayWords = viewingHistoryEntry?.wordResults ?? wordResults
   const displayScores = viewingHistoryEntry?.scores ?? scores
+  const displayRawSegments = viewingHistoryEntry?.rawSegments ?? currentRawSegments
   const viewingAttemptNumber = viewingHistoryEntry
     ? verseHistory.length - verseHistory.findIndex(e => e.id === viewingHistoryEntry.id)
     : null
@@ -301,7 +304,7 @@ export default function App() {
     audioChunksRef.current = []
   }
 
-  function addToHistory(words, scores, audioUrl) {
+  function addToHistory(words, scores, audioUrl, rawSegments) {
     const entry = {
       id: Date.now(),
       timestamp: Date.now(),
@@ -310,6 +313,7 @@ export default function App() {
       scores,
       wordResults: words,
       audioUrl,
+      rawSegments,
     }
     // Store up to 3 per verse; revoke dropped URL to free memory
     setHistory(prev => {
@@ -330,6 +334,7 @@ export default function App() {
     setScores(null)
     setErrorMsg('')
     setSelectedWordIdx(null)
+    setCurrentRawSegments([])
 
     let stream
     try {
@@ -346,6 +351,8 @@ export default function App() {
       3000
     )
 
+    const segmentsRef = []  // local accumulator — avoids stale closure on setCurrentRawSegments
+
     recognizerRef.current = startPronunciationAssessment(
       pasuk.text,
       ({ words, scores }) => {
@@ -354,7 +361,7 @@ export default function App() {
         ;(blobPromiseRef.current ?? Promise.resolve(null)).then(blob => {
           const audioUrl = blob ? URL.createObjectURL(blob) : null
           setCurrentAudioUrl(audioUrl)
-          addToHistory(reconciled, scores, audioUrl)
+          addToHistory(reconciled, scores, audioUrl, segmentsRef)
           setShowHistory(true)
         })
         setPhase('done')
@@ -371,7 +378,11 @@ export default function App() {
         clearTimeout(prepareTimerRef.current)
         setPhase(p => p === 'preparing' ? 'recording' : p)
       },
-      stream
+      stream,
+      (json) => {
+        segmentsRef.push(json)
+        setCurrentRawSegments([...segmentsRef])
+      }
     )
   }
 
@@ -393,6 +404,7 @@ export default function App() {
     currentAudioRef.current = null
     setCurrentPlayPhase('idle')
     setCurrentAudioUrl(null)
+    setCurrentRawSegments([])
     setPhase('idle')
     setWordResults([])
     setScores(null)
@@ -597,6 +609,29 @@ export default function App() {
               <p className="score-note">
                 Scored against <strong>Modern Israeli (Sephardic)</strong> pronunciation — Biblical/Ashkenazi readers may score lower on some phonemes.
               </p>
+            </div>
+          )}
+
+          {displayRawSegments.length > 0 && (
+            <div className="debug-panel">
+              <button
+                className="debug-toggle"
+                onClick={() => setShowDebug(s => !s)}
+              >
+                <span className="debug-toggle-icon">{showDebug ? '▾' : '▸'}</span>
+                Raw Azure Data
+                <span className="debug-count">{displayRawSegments.length} segment{displayRawSegments.length !== 1 ? 's' : ''}</span>
+              </button>
+              {showDebug && (
+                <div className="debug-body">
+                  {displayRawSegments.map((seg, i) => (
+                    <div key={i} className="debug-segment">
+                      <div className="debug-segment-label">Segment {i + 1}</div>
+                      <pre className="debug-pre">{JSON.stringify(seg, null, 2)}</pre>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </main>

@@ -48,7 +48,7 @@ function createAudioConfigFromStream(stream) {
   return { audioConfig: SpeechSDK.AudioConfig.fromStreamInput(pushStream), cleanup }
 }
 
-export function startPronunciationAssessment(referenceText, onResult, onError, onReady, stream) {
+export function startPronunciationAssessment(referenceText, onResult, onError, onReady, stream, onSegment) {
   const key = import.meta.env.VITE_AZURE_SPEECH_KEY
   const region = import.meta.env.VITE_AZURE_SPEECH_REGION
 
@@ -78,17 +78,19 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
 
   // Accumulate results across segments (user may pause mid-verse)
   const allWords = []
-  let latestScores = null
+  const allSegmentScores = []
 
   recognizer.recognized = (s, e) => {
     if (e.result.reason !== SpeechSDK.ResultReason.RecognizedSpeech) return
     try {
       // Parse the raw JSON — more reliable than PronunciationAssessmentResult.words in the JS SDK
       const json = JSON.parse(e.result.json)
+      onSegment?.(json)
       const nbest = json?.NBest?.[0]
       if (!nbest) return
 
-      for (const w of (nbest.Words ?? [])) {
+      const segmentWords = nbest.Words ?? []
+      for (const w of segmentWords) {
         allWords.push({
           word: w.Word,
           score: w.PronunciationAssessment?.AccuracyScore ?? 0,
@@ -100,14 +102,14 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
         })
       }
 
-      if (nbest.PronunciationAssessment) {
+      if (nbest.PronunciationAssessment && segmentWords.length > 0) {
         const pa = nbest.PronunciationAssessment
-        latestScores = {
+        allSegmentScores.push({
+          wordCount: segmentWords.length,
           pronunciation: pa.PronScore ?? pa.PronunciationScore ?? 0,
           accuracy: pa.AccuracyScore ?? 0,
           fluency: pa.FluencyScore ?? 0,
-          completeness: pa.CompletenessScore ?? 0,
-        }
+        })
       }
     } catch { /* malformed JSON — skip segment */ }
   }
@@ -126,8 +128,18 @@ export function startPronunciationAssessment(referenceText, onResult, onError, o
       recognizer.stopContinuousRecognitionAsync(
         () => {
           audioCleanup?.()
-          if (allWords.length > 0 && latestScores) {
-            onResult({ words: allWords, scores: latestScores })
+          if (allWords.length > 0 && allSegmentScores.length > 0) {
+            const totalWords = allSegmentScores.reduce((s, seg) => s + seg.wordCount, 0)
+            const wavg = (key) => allSegmentScores.reduce((s, seg) => s + seg[key] * seg.wordCount, 0) / totalWords
+            const refWordCount = referenceText.split(/\s+/).filter(Boolean).length
+            const spokenCount = allWords.filter(w => w.errorType !== 'Omission').length
+            const scores = {
+              pronunciation: wavg('pronunciation'),
+              accuracy: wavg('accuracy'),
+              fluency: wavg('fluency'),
+              completeness: refWordCount > 0 ? (spokenCount / refWordCount) * 100 : 0,
+            }
+            onResult({ words: allWords, scores })
           } else {
             onError('No speech was detected. Make sure your microphone is working and try again.')
           }

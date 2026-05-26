@@ -133,6 +133,22 @@ function PhonemePanel({ wordData, onClose }) {
   )
 }
 
+const SCORING_MODES = [
+  { value: 'default',    label: 'Default',    note: 'Azure standard — Overall includes fluency and completeness.' },
+  { value: 'no-fluency', label: 'No Fluency', note: 'Overall = Accuracy (75%) + Completeness (25%). Fluency excluded.' },
+  { value: 'curved',     label: 'Curved',     note: 'Accuracy-only scoring with a gentle curve — more lenient for natural reading variation.' },
+]
+
+function applyScoringMode(scores, mode) {
+  if (!scores) return null
+  if (mode === 'default') return scores
+  const overall = scores.accuracy * 0.75 + scores.completeness * 0.25
+  if (mode === 'no-fluency') return { ...scores, pronunciation: Math.round(overall) }
+  // curved: power curve maps ~60→74, ~70→82, ~80→89, ~90→95
+  const curve = v => Math.round(Math.pow(Math.max(0, v) / 100, 0.65) * 100)
+  return { ...scores, pronunciation: curve(overall), accuracy: curve(scores.accuracy) }
+}
+
 function ScoreRing({ value, label }) {
   const radius = 28
   const circumference = 2 * Math.PI * radius
@@ -178,6 +194,7 @@ export default function App() {
   const [currentPlayPhase, setCurrentPlayPhase] = useState('idle')
   const [currentRawSegments, setCurrentRawSegments] = useState([])
   const [showDebug, setShowDebug] = useState(false)
+  const [scoringMode, setScoringMode] = useState('default')
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
@@ -205,6 +222,16 @@ export default function App() {
   const displayWords = viewingHistoryEntry?.wordResults ?? wordResults
   const displayScores = viewingHistoryEntry?.scores ?? scores
   const displayRawSegments = viewingHistoryEntry?.rawSegments ?? currentRawSegments
+
+  // Apply scoring mode curve to per-word and per-phoneme scores for rendering
+  const curveScore = v => Math.round(Math.pow(Math.max(0, v) / 100, 0.65) * 100)
+  const modeWords = scoringMode === 'curved'
+    ? displayWords.map(w => ({
+        ...w,
+        score: w.errorType === 'Omission' ? w.score : curveScore(w.score),
+        phonemes: w.phonemes.map(p => ({ ...p, accuracyScore: curveScore(p.accuracyScore) })),
+      }))
+    : displayWords
   const viewingAttemptNumber = viewingHistoryEntry
     ? verseHistory.length - verseHistory.findIndex(e => e.id === viewingHistoryEntry.id)
     : null
@@ -472,21 +499,21 @@ export default function App() {
 
           <div className="pasuk-card">
             <div className="hebrew-text" dir="rtl" lang="he">
-              {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0
-                ? displayWords.map((w, i) => (
+              {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0
+                ? modeWords.map((w, i) => (
                     <span key={i}>
                       <WordChip
                         {...w}
                         isSelected={selectedWordIdx === i}
                         onClick={() => handleWordClick(i)}
                       />
-                      {i < displayWords.length - 1 ? ' ' : null}
+                      {i < modeWords.length - 1 ? ' ' : null}
                     </span>
                   ))
                 : <span>{pasuk.text}</span>
               }
             </div>
-            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && (
+            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && (
               <p className="click-hint">Click any highlighted word to see phoneme breakdown</p>
             )}
             <div className="pasuk-meta">
@@ -507,9 +534,9 @@ export default function App() {
             </div>
           </div>
 
-          {selectedWordIdx !== null && displayWords[selectedWordIdx] && (
+          {selectedWordIdx !== null && modeWords[selectedWordIdx] && (
             <PhonemePanel
-              wordData={displayWords[selectedWordIdx]}
+              wordData={modeWords[selectedWordIdx]}
               onClose={() => setSelectedWordIdx(null)}
             />
           )}
@@ -600,14 +627,35 @@ export default function App() {
 
           {displayScores && (
             <div className="score-panel">
+              <div className="scoring-mode-selector">
+                <span className="scoring-mode-label">Scoring</span>
+                <div className="scoring-mode-seg">
+                  {SCORING_MODES.map(m => (
+                    <button
+                      key={m.value}
+                      className={`scoring-mode-btn ${scoringMode === m.value ? 'scoring-mode-btn--active' : ''}`}
+                      onClick={() => setScoringMode(m.value)}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="score-rings">
-                <ScoreRing value={displayScores.pronunciation} label="Overall" />
-                <ScoreRing value={displayScores.accuracy} label="Accuracy" />
-                <ScoreRing value={displayScores.fluency} label="Fluency" />
-                <ScoreRing value={displayScores.completeness} label="Complete" />
+                {(() => {
+                  const s = applyScoringMode(displayScores, scoringMode)
+                  return (
+                    <>
+                      <ScoreRing value={s.pronunciation} label="Overall" />
+                      <ScoreRing value={s.accuracy} label="Accuracy" />
+                      {scoringMode === 'default' && <ScoreRing value={s.fluency} label="Fluency" />}
+                      <ScoreRing value={s.completeness} label="Complete" />
+                    </>
+                  )
+                })()}
               </div>
               <p className="score-note">
-                Scored against <strong>Modern Israeli (Sephardic)</strong> pronunciation — Biblical/Ashkenazi readers may score lower on some phonemes.
+                {SCORING_MODES.find(m => m.value === scoringMode).note}
               </p>
             </div>
           )}

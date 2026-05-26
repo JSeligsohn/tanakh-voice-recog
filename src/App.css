@@ -183,12 +183,7 @@
 /* ── Word chips ──────────────────────────── */
 .word-chip {
   display: inline;
-  margin-inline-start: 0.3em;
   cursor: pointer;
-}
-
-.word-chip:first-child {
-  margin-inline-start: 0;
 }
 
 .word-text {

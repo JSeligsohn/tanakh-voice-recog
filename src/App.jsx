@@ -394,12 +394,14 @@ export default function App() {
             <div className="hebrew-text" dir="rtl" lang="he">
               {phase === 'done' && wordResults.length > 0
                 ? wordResults.map((w, i) => (
-                    <WordChip
-                      key={i}
-                      {...w}
-                      isSelected={selectedWordIdx === i}
-                      onClick={() => handleWordClick(i)}
-                    />
+                    <span key={i}>
+                      <WordChip
+                        {...w}
+                        isSelected={selectedWordIdx === i}
+                        onClick={() => handleWordClick(i)}
+                      />
+                      {i < wordResults.length - 1 ? ' ' : null}
+                    </span>
                   ))
                 : <span>{pasuk.text}</span>
               }

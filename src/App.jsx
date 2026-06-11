@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { psukim } from './data/psukim'
 import { startPronunciationAssessment } from './services/speechAssessment'
+import { assessWithOpenAI } from './services/openaiAssessment'
 import { speakHebrew } from './services/tts'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
@@ -49,11 +50,15 @@ function WordChip({ word, score, errorType, isSelected, onClick }) {
   )
 }
 
-function PhonemePanel({ wordData, onClose }) {
+function PhonemePanel({ wordData, provider, onClose }) {
   const { word, score, errorType, phonemes } = wordData
   const color = scoreColor(score, errorType)
   const groups = splitHebrewToGroups(word)
-  const mapped = mapPhonemesToGroups(groups, phonemes)
+  // OpenAI returns natural Hebrew syllables (consonant+vowel groupings) — display
+  // those directly. Azure returns per-phoneme scores which we map onto letter groups.
+  const breakdownItems = provider === 'openai' && phonemes?.length > 0
+    ? phonemes.map(p => ({ chars: p.phoneme, score: p.accuracyScore ?? null }))
+    : mapPhonemesToGroups(groups, phonemes)
   const isPerfect = groups.length === (phonemes?.length ?? 0)
 
   const [isPlaying, setIsPlaying] = useState(false)
@@ -97,10 +102,10 @@ function PhonemePanel({ wordData, onClose }) {
         <button className="phoneme-panel-close" onClick={() => { cancelRef.current?.(); onClose() }} aria-label="Close">✕</button>
       </div>
 
-      {mapped.length > 0 ? (
+      {breakdownItems.length > 0 ? (
         <>
           <div className="char-breakdown" dir="rtl">
-            {mapped.map((item, i) => {
+            {breakdownItems.map((item, i) => {
               const cColor = item.score !== null ? scoreColor(item.score, 'None') : '#d6d3d1'
               return (
                 <div key={i} className="char-item">
@@ -120,11 +125,22 @@ function PhonemePanel({ wordData, onClose }) {
             <p className="phoneme-note">
               Word not detected in your recording — press Listen to hear how it should sound.
             </p>
-          ) : !isPerfect ? (
+          ) : !isPerfect && provider === 'azure' ? (
             <p className="phoneme-note">
-              Scores are approximate — Azure returned {phonemes?.length ?? 0} phonemes for {groups.length} letter groups.
+              Scores are approximate — {phonemes?.length ?? 0} phonemes for {groups.length} letter groups.
             </p>
           ) : null}
+
+          {phonemes?.some(p => p.note) && (
+            <div className="syllable-notes">
+              {phonemes.filter(p => p.note).map((p, i) => (
+                <div key={i} className="syllable-note-row">
+                  <span className="syllable-note-glyph" dir="rtl" lang="he">{p.phoneme}</span>
+                  <span className="syllable-note-text">{p.note}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       ) : (
         <p className="phoneme-empty">No breakdown available for this word.</p>
@@ -195,6 +211,13 @@ export default function App() {
   const [currentRawSegments, setCurrentRawSegments] = useState([])
   const [showDebug, setShowDebug] = useState(false)
   const [scoringMode, setScoringMode] = useState('default')
+  const [provider, setProvider] = useState(() => {
+    const stored = localStorage.getItem('tanakh-provider')
+    if (stored === 'gemini') return 'openai' // migrate prior local value
+    return stored ?? 'azure'
+  })
+
+  useEffect(() => { localStorage.setItem('tanakh-provider', provider) }, [provider])
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
@@ -259,13 +282,24 @@ export default function App() {
       setCurrentPlayPhase('idle')
       return
     }
-    if (!currentAudioUrl) return
+    if (!currentAudioUrl) {
+      console.warn('[playback] no currentAudioUrl set')
+      return
+    }
+    console.log('[playback] starting:', currentAudioUrl)
     setCurrentPlayPhase('playing')
     const audio = new Audio(currentAudioUrl)
     audio.onended = () => { currentAudioRef.current = null; setCurrentPlayPhase('idle') }
-    audio.onerror = () => { currentAudioRef.current = null; setCurrentPlayPhase('idle') }
+    audio.onerror = (e) => {
+      console.error('[playback] audio element error:', audio.error, e)
+      currentAudioRef.current = null
+      setCurrentPlayPhase('idle')
+    }
     currentAudioRef.current = audio
-    audio.play().catch(() => setCurrentPlayPhase('idle'))
+    audio.play().catch(err => {
+      console.error('[playback] play() rejected:', err)
+      setCurrentPlayPhase('idle')
+    })
   }
 
   function handleHistoryAudioPlay() {
@@ -285,7 +319,8 @@ export default function App() {
   }
 
   // Opens one getUserMedia stream shared by both MediaRecorder (for playback) and Azure (for assessment).
-  // Returns the stream so it can be passed to startPronunciationAssessment.
+  // Resolves only AFTER the recorder is actually capturing audio, so callers can flip
+  // the UI to "ready" without losing the first word.
   async function startSharedStream() {
     audioChunksRef.current = []
     let resolveBlobPromise
@@ -307,8 +342,15 @@ export default function App() {
       stream.getTracks().forEach(t => t.stop())
       sharedStreamRef.current = null
     }
+
+    // Wait for the recorder to actually transition to "recording" state, then a
+    // brief buffer for the audio pipeline to start producing samples. Without this,
+    // the first ~100-300ms of speech can be lost depending on the browser.
+    const recordingStarted = new Promise(resolve => { recorder.onstart = () => resolve() })
     recorder.start(250)
     mediaRecorderRef.current = recorder
+    await recordingStarted
+    await new Promise(resolve => setTimeout(resolve, 250))
 
     return stream
   }
@@ -378,6 +420,13 @@ export default function App() {
       3000
     )
 
+    if (provider === 'openai') {
+      // No live streaming for OpenAI — recorder runs alone, assessment happens after Done.
+      clearTimeout(prepareTimerRef.current)
+      setPhase('recording')
+      return
+    }
+
     const segmentsRef = []  // local accumulator — avoids stale closure on setCurrentRawSegments
 
     recognizerRef.current = startPronunciationAssessment(
@@ -413,10 +462,38 @@ export default function App() {
     )
   }
 
+  async function runOpenAIAssessment() {
+    const blob = await (blobPromiseRef.current ?? Promise.resolve(null))
+    if (!blob) {
+      setPhase('error')
+      setErrorMsg('No audio was recorded. Please try again.')
+      return
+    }
+    try {
+      const { words, scores, rawSegment } = await assessWithOpenAI(blob, pasuk.text)
+      const reconciled = reconcileWords(pasuk.text, words)
+      const audioUrl = URL.createObjectURL(blob)
+      setCurrentAudioUrl(audioUrl)
+      setCurrentRawSegments([rawSegment])
+      addToHistory(reconciled, scores, audioUrl, [rawSegment])
+      if (window.innerWidth > 640) setShowHistory(true)
+      setPhase('done')
+      setScores(scores)
+      setWordResults(reconciled)
+    } catch (err) {
+      setPhase('error')
+      setErrorMsg(err.message ?? 'OpenAI assessment failed. Please try again.')
+    }
+  }
+
   function handleDone() {
     setPhase('processing')
     stopMediaRecorder()
-    recognizerRef.current?.stop()
+    if (provider === 'openai') {
+      runOpenAIAssessment()
+    } else {
+      recognizerRef.current?.stop()
+    }
   }
 
   function handleCancel() {
@@ -497,6 +574,28 @@ export default function App() {
             </select>
           </div>
 
+          <div className="provider-selector">
+            <span className="provider-label">Engine</span>
+            <div className="provider-seg">
+              <button
+                className={`provider-btn ${provider === 'azure' ? 'provider-btn--active' : ''}`}
+                onClick={() => setProvider('azure')}
+                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                title="Azure Cognitive Services — Modern Israeli phoneme model"
+              >
+                Azure
+              </button>
+              <button
+                className={`provider-btn ${provider === 'openai' ? 'provider-btn--active' : ''}`}
+                onClick={() => setProvider('openai')}
+                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                title="OpenAI gpt-4o-audio — prompted for Ashkenazic pronunciation"
+              >
+                OpenAI
+              </button>
+            </div>
+          </div>
+
           <div className="pasuk-card">
             <div className="hebrew-text" dir="rtl" lang="he">
               {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0
@@ -537,6 +636,7 @@ export default function App() {
           {selectedWordIdx !== null && modeWords[selectedWordIdx] && (
             <PhonemePanel
               wordData={modeWords[selectedWordIdx]}
+              provider={displayRawSegments[0]?.provider ?? 'azure'}
               onClose={() => setSelectedWordIdx(null)}
             />
           )}
@@ -657,6 +757,20 @@ export default function App() {
               <p className="score-note">
                 {SCORING_MODES.find(m => m.value === scoringMode).note}
               </p>
+
+              {displayRawSegments[0]?.feedback && (
+                <div className="feedback-banner">
+                  <span className="feedback-label">Feedback</span>
+                  <p className="feedback-text">{displayRawSegments[0].feedback}</p>
+                </div>
+              )}
+
+              {displayRawSegments[0]?.transcription && (
+                <div className="transcription-row">
+                  <span className="transcription-label">Heard</span>
+                  <span className="transcription-text">{displayRawSegments[0].transcription}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -667,7 +781,7 @@ export default function App() {
                 onClick={() => setShowDebug(s => !s)}
               >
                 <span className="debug-toggle-icon">{showDebug ? '▾' : '▸'}</span>
-                Raw Azure Data
+                Raw Engine Data
                 <span className="debug-count">{displayRawSegments.length} segment{displayRawSegments.length !== 1 ? 's' : ''}</span>
               </button>
               {showDebug && (

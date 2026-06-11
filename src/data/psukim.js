@@ -29,4 +29,49 @@ export const psukim = [
     text: 'וַיִּקַּח אַבְרָם אֶת־שָׂרַי אִשְׁתּוֹ וְאֶת־לוֹט בֶּן־אָחִיו וְאֶת־כָּל־רְכוּשָׁם אֲשֶׁר רָכָשׁוּ וְאֶת־הַנֶּפֶשׁ אֲשֶׁר־עָשׂוּ בְחָרָן וַיֵּצְאוּ לָלֶכֶת אַרְצָה כְּנַעַן',
     translation: 'Abram took his wife Sarai, his nephew Lot, all the possessions they had accumulated and the people they had acquired in Haran, and they set out for the land of Canaan.',
   },
+
+  // ── Test verses chosen to stress-test specific pronunciation challenges ──
+
+  // sheva na (שְׁ), sin (יִשְׂ), chataf segol (אֱ), guttural chet (אֶחָד)
+  {
+    reference: 'דְּבָרִים ו:ד',
+    book: 'Test: Devarim 6:4 (Shema)',
+    text: 'שְׁמַע יִשְׂרָאֵל הַשֵּׁם אֱלֹהֵינוּ הַשֵּׁם אֶחָד',
+    translation: 'Hear, O Israel, the LORD our God, the LORD is one.',
+  },
+
+  // Reading-skill test: קֹל (cholam chaser) and קוֹל (cholam malei) sound IDENTICAL —
+  // both pronounced "kol". The test is whether the student recognizes the chaser
+  // sign (just a dot, no vav). Also: chataf patach (יַעֲ), guttural ayin, sin (עֵשָׂו).
+  {
+    reference: 'בְּרֵאשִׁית כז:כב',
+    book: 'Test: Bereishit 27:22 (chaser sign recognition)',
+    text: 'הַקֹּל קוֹל יַעֲקֹב וְהַיָּדַיִם יְדֵי עֵשָׂו',
+    translation: 'The voice is the voice of Jacob, but the hands are the hands of Esau.',
+  },
+
+  // two cholam chasers (רֹ, לֹ), sheva nach inside word (אֶחְ), guttural chet
+  {
+    reference: 'תְּהִלִּים כג:א',
+    book: 'Test: Tehillim 23:1',
+    text: 'הַשֵּׁם רֹעִי לֹא אֶחְסָר',
+    translation: 'The LORD is my shepherd; I shall not want.',
+  },
+
+  // cholam chaser (מֹ), silent final ה, shin & sin in close proximity, dagesh chazak (שִּׁ)
+  {
+    reference: 'שְׁמוֹת טו:א',
+    book: 'Test: Shemot 15:1 (Az Yashir)',
+    text: 'אָז יָשִׁיר־מֹשֶׁה וּבְנֵי יִשְׂרָאֵל אֶת־הַשִּׁירָה הַזֹּאת',
+    translation: 'Then Moses and the children of Israel sang this song.',
+  },
+
+  // mappiq ה (דְּרָכֶיהָ, נְתִיבוֹתֶיהָ — final ה must be pronounced),
+  // sheva na (דְּ, נְ), kamatz katan in וְכָל
+  {
+    reference: 'מִשְׁלֵי ג:יז',
+    book: 'Test: Mishlei 3:17 (mappiq ה)',
+    text: 'דְּרָכֶיהָ דַרְכֵי־נֹעַם וְכָל־נְתִיבוֹתֶיהָ שָׁלוֹם',
+    translation: 'Her ways are ways of pleasantness, and all her paths are peace.',
+  },
 ]

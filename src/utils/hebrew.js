@@ -85,9 +85,90 @@ export function reconcileWords(referenceText, azureWords) {
     }
   }
 
-  return aligned.map(({ ri, ai }) => {
-    if (ri !== null && ai !== null) return azureWords[ai]
-    if (ri !== null) return { word: refTokens[ri], score: 0, errorType: 'Omission', phonemes: [] }
-    return azureWords[ai] // insertion — extra word Azure heard that isn't in the reference
-  })
+  // Canonicalize: within each contiguous run of non-matched items (Omissions +
+  // Insertions), place all Omissions before all Insertions. LCS traceback's
+  // tie-breaking can put Insertions BEFORE the matching Omission, which would
+  // hide them from the forward-scanning merge logic below.
+  const canonical = []
+  let r = 0
+  while (r < aligned.length) {
+    if (aligned[r].ri !== null && aligned[r].ai !== null) {
+      canonical.push(aligned[r])
+      r++
+    } else {
+      const run = []
+      while (r < aligned.length && !(aligned[r].ri !== null && aligned[r].ai !== null)) {
+        run.push(aligned[r])
+        r++
+      }
+      const omissions = run.filter(it => it.ri !== null && it.ai === null)
+      const insertions = run.filter(it => it.ri === null && it.ai !== null)
+      canonical.push(...omissions, ...insertions)
+    }
+  }
+
+  // Build the result, but defensively merge consecutive Insertions that re-create
+  // an adjacent Omission's normalized form. This happens when the engine splits a
+  // maqef-joined word (e.g. אֶל־אַבְרָם → "אֶל" + "אַבְרָם"), which would otherwise
+  // show the joined reference word as Omission AND the split parts as Insertions.
+  const result = []
+  let k = 0
+  while (k < canonical.length) {
+    const cur = canonical[k]
+
+    // Matched word
+    if (cur.ri !== null && cur.ai !== null) {
+      result.push(azureWords[cur.ai])
+      k++
+      continue
+    }
+
+    // Omission — look ahead for consecutive Insertions whose normalized
+    // concatenation equals the omitted word's norm
+    if (cur.ri !== null && cur.ai === null) {
+      const refWord = refTokens[cur.ri]
+      const refWordNorm = stripMarks(refWord)
+      let combined = ''
+      let count = 0
+
+      while (
+        k + 1 + count < canonical.length &&
+        canonical[k + 1 + count].ri === null &&
+        canonical[k + 1 + count].ai !== null &&
+        combined.length < refWordNorm.length
+      ) {
+        const nextIns = canonical[k + 1 + count]
+        combined += stripMarks(azureWords[nextIns.ai].word)
+        count++
+
+        if (combined === refWordNorm) {
+          const pieces = []
+          for (let p = 1; p <= count; p++) pieces.push(azureWords[canonical[k + p].ai])
+          const avgScore = Math.round(pieces.reduce((s, w) => s + (w.score ?? 0), 0) / pieces.length)
+          const hasError = pieces.some(w => w.errorType && w.errorType !== 'None')
+          result.push({
+            word: refWord, // preserve maqef-joined display form
+            score: avgScore,
+            errorType: hasError ? 'Mispronunciation' : 'None',
+            phonemes: pieces.flatMap(w => w.phonemes ?? []),
+          })
+          k += count + 1
+          break
+        }
+      }
+
+      // If no merge succeeded, emit as a real Omission
+      if (combined !== refWordNorm) {
+        result.push({ word: refWord, score: 0, errorType: 'Omission', phonemes: [] })
+        k++
+      }
+      continue
+    }
+
+    // Pure Insertion not consumed by a merge — pass through as-is
+    result.push(azureWords[cur.ai])
+    k++
+  }
+
+  return result
 }

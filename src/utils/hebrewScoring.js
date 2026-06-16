@@ -89,9 +89,12 @@ function normalizeStudent(phonetic) {
 const MAX_SKIP = 3
 
 // Identify the phonological consonant unit at the start of `remaining`. Digraphs
-// like "sh", "ch", "ts", "tz", "th", "kh" count as a single unit. Single
-// consonant chars otherwise. Returns "" if remaining starts with a vowel.
-const DIGRAPHS = ['sh', 'ch', 'ts', 'tz', 'th', 'kh']
+// like "sh", "ch", "ts", "tz", "kh" count as a single unit. Single consonant
+// chars otherwise. Returns "" if remaining starts with a vowel.
+// Note: "th" deliberately NOT a digraph — in Hebrew transliteration the "t"
+// and following "h" are almost always two separate sounds (e.g. ת ending
+// one syllable, ה starting the next, as in "veethanefesh").
+const DIGRAPHS = ['sh', 'ch', 'ts', 'tz', 'kh']
 function identifyConsonantUnit(remaining) {
   if (!remaining) return ''
   const two = remaining.slice(0, 2).toLowerCase()
@@ -110,7 +113,7 @@ function cleanMatch(remaining, expected) {
   const after = remaining[expected.length] ?? ''
   const lastChar = expected[expected.length - 1]
   if (lastChar === 's' && after === 'h') return false  // would be "sh"
-  if (lastChar === 't' && (after === 's' || after === 'z' || after === 'h')) return false
+  if (lastChar === 't' && (after === 's' || after === 'z')) return false  // ts/tz digraphs (but NOT th)
   if (lastChar === 'c' && after === 'h') return false
   if (lastChar === 'k' && after === 'h') return false
   return true
@@ -146,7 +149,7 @@ function cleanIndexOf(haystack, needle) {
     const last = needle[needle.length - 1]
     const isDigraph =
       (last === 's' && after === 'h') ||
-      (last === 't' && (after === 's' || after === 'z' || after === 'h')) ||
+      (last === 't' && (after === 's' || after === 'z')) ||  // ts/tz only, NOT th
       (last === 'c' && after === 'h') ||
       (last === 'k' && after === 'h')
     if (!isDigraph) return idx
@@ -208,10 +211,15 @@ function alignSyllables(syllables, studentPhonetic) {
     if (!variantMatch) variantMatch = firstMatch                       // no aligned variant, take any
     if (!variantMatch) variantMatch = matchAnyVariant(remaining, expected)
     if (variantMatch) {
-      // Check for vowel-elongation right after the matched syllable
+      // Check for vowel-elongation right after the matched syllable, but ONLY
+      // if the repeated vowel char wouldn't be the legitimate start of the next
+      // audible syllable. Otherwise we'd eat the next syl's vowel (e.g. "veet"
+      // for וְאֵת: the second "e" belongs to alef+segol, not to elongation).
       let elongated = ''
       const lastVowelChar = variantMatch.match(/[aeiouy]$/)?.[0]
-      if (lastVowelChar) {
+      const nextStartsWithSameVowel =
+        lastVowelChar && nextSyl?.expected && nextSyl.expected[0] === lastVowelChar
+      if (lastVowelChar && !nextStartsWithSameVowel) {
         const after = remaining.slice(variantMatch.length)
         while (elongated.length < 3 && after[elongated.length] === lastVowelChar) {
           elongated += lastVowelChar
@@ -241,7 +249,28 @@ function alignSyllables(syllables, studentPhonetic) {
 
     // -- Consonant phase --
     if (syl.consonant) {
-      const cMatch = matchAnyVariant(remaining, syl.consonant)
+      let cMatch = matchAnyVariant(remaining, syl.consonant)
+
+      // Soft-match fallback: cleanMatch refuses to match "t" when followed by
+      // "s"/"z" (would form ts/tz digraph), and similarly for sh/ch/kh. But if
+      // the next audible syllable's consonant starts with the digraph-completing
+      // char, then the "extra" char rightfully belongs to that next syllable and
+      // the digraph block is wrong here.
+      // e.g. אֶת־שָׂרַי → "etsaray": the "ts" is really ת + שׂ, not צ.
+      if (!cMatch && remaining.startsWith(syl.consonant)) {
+        const afterChar = remaining[syl.consonant.length] ?? ''
+        const lastC = syl.consonant[syl.consonant.length - 1]
+        const wouldFormDigraph =
+          (lastC === 't' && (afterChar === 's' || afterChar === 'z')) ||
+          (lastC === 's' && afterChar === 'h') ||
+          (lastC === 'c' && afterChar === 'h') ||
+          (lastC === 'k' && afterChar === 'h')
+        const nextC = nextSyl?.consonant?.[0]
+        if (wouldFormDigraph && nextC === afterChar) {
+          cMatch = syl.consonant
+        }
+      }
+
       if (cMatch) {
         heardConsonant = cMatch
         consumed += cMatch.length
@@ -287,25 +316,34 @@ function alignSyllables(syllables, studentPhonetic) {
         consumed += vMatch.length
         vowelMatched = true
 
-        // Vowel-elongation: student held the vowel longer than written. Detect
-        // by checking if the next char repeats the last vowel char we matched.
+        // Vowel-elongation: student held the vowel longer than written. Only
+        // detect when the repeated char wouldn't legitimately belong to the
+        // next audible syllable's vowel.
         const after = remaining.slice(consumed)
         const lastVowelChar = vMatch[vMatch.length - 1]
-        let extra = 0
-        while (
-          extra < 3 &&
-          after[extra] === lastVowelChar &&
-          /[aeiouy]/.test(lastVowelChar)
-        ) extra++
-        if (extra > 0) {
-          vowelElongated = after.slice(0, extra)
-          consumed += extra
+        const nextStartsWithSameVowel =
+          nextSyl?.expected && nextSyl.expected[0] === lastVowelChar
+        if (/[aeiouy]/.test(lastVowelChar) && !nextStartsWithSameVowel) {
+          let extra = 0
+          while (extra < 3 && after[extra] === lastVowelChar) extra++
+          if (extra > 0) {
+            vowelElongated = after.slice(0, extra)
+            consumed += extra
+          }
         }
       } else {
+        // Vowel didn't match. Don't grab a vowel char that belongs to the
+        // next audible syllable's expected sound (e.g. the "u" in "tsu" is
+        // really for א+shuruk in וַיֵּצְאוּ — leave it for the next syllable).
         const expectedVowelLen = syl.vowel.length
         const vowelChars = afterConsonant.match(/^[aeiouy]+/)?.[0] ?? ''
-        heardVowel = vowelChars.slice(0, expectedVowelLen)
-        consumed += heardVowel.length
+        const wouldGrab = vowelChars.slice(0, expectedVowelLen)
+        const nextStartsWithThis =
+          wouldGrab && nextSyl?.expected && nextSyl.expected[0] === wouldGrab[0]
+        if (!nextStartsWithThis) {
+          heardVowel = wouldGrab
+          consumed += heardVowel.length
+        }
       }
     }
 

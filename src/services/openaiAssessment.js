@@ -248,12 +248,91 @@ WORD BOUNDARIES — critically important:
 - The "words" array length and order must mirror the reference text's whitespace-separated tokens exactly.
 - If you split a maqef-joined word into pieces, your response will be marked invalid.`
 
-export async function assessWithOpenAI(audioBlob, referenceText) {
+// Phrases in the base prompt that contradict the tradition overrides. We rewrite
+// them in-place rather than relying on a header override, because the model gives
+// significant weight to repeated reinforcement in the body.
+const TAV_LENIENT_PASSAGES = [
+  `- ת without dagesh: "t" (Sephardic/Modern) OR "s" / "sof" (Ashkenazic) — either is correct`,
+  `- ת with/without dagesh: BOTH "t" and "s" are acceptable (Sephardic vs Ashkenazic). Do not flag.`,
+  `- ת without dagesh: "t" (Sephardic) OR "s" (Ashkenazic) — both valid`,
+  `- "s" → ת without dagesh, valid in Ashkenazic ✓`,
+  `- Student says "hazos" for הַזֹּאת → transcription: "hazos" (this happens to be valid Ashkenazic, so no error)`,
+]
+
+const HAZOS_WORKED_EXAMPLE = `Worked example for הַזֹּאת with transcription "hazos":
+- "h" → ה ✓
+- "a" → patach on ה ✓
+- "z" → ז ✓ (do NOT flag z as wrong just because there's an "s" elsewhere in the word)
+- "o" → cholam on ז ✓
+- (alef silent) ✓
+- "s" → ת without dagesh, valid in Ashkenazic ✓
+- Verdict: word is correct. No notes, score 95+.`
+
+const HAZOS_SEPHARDIC_REPLACEMENT = `Worked example for הַזֹּאת in SEPHARDIC mode:
+
+Case A — student says "hazot" (transcription: "hazot"):
+- "h" → ה ✓, "a" → patach ✓, "z" → ז ✓, "o" → cholam ✓, alef silent ✓
+- "t" → ת without dagesh, this is the correct Sephardic pronunciation ✓
+- Verdict: correct. Score 95+, no notes.
+
+Case B — student says "hazos" (transcription: "hazos"):
+- "s" at the end → ת without dagesh. In Sephardic mode this is WRONG. Only "t" is acceptable.
+- Verdict: FLAG the ת syllable. Note: "ת should be 't' — heard 's' instead". Score that syllable 65-75.`
+
+const HAZOS_ASHKENAZIC_REPLACEMENT = `Worked example for הַזֹּאת in ASHKENAZIC mode:
+
+Case A — student says "hazos" (transcription: "hazos"):
+- "h" → ה ✓, "a" → patach ✓, "z" → ז ✓, "o" → cholam ✓, alef silent ✓
+- "s" → ת without dagesh, this is the correct Ashkenazic pronunciation ✓
+- Verdict: correct. Score 95+, no notes.
+
+Case B — student says "hazot" (transcription: "hazot"):
+- "t" at the end → ת without dagesh. In Ashkenazic mode this is WRONG. ת without dagesh must be "s" (sav).
+- Verdict: FLAG the ת syllable. Note: "ת should be 's' (sav) — heard 't' instead". Score that syllable 65-75.`
+
+function buildSystemPrompt({ tradition = 'sephardic', shevaMode = 'enforce' } = {}) {
+  let prompt = SYSTEM_PROMPT
+  const overrides = []
+
+  if (tradition === 'sephardic') {
+    prompt = prompt
+      .replace(TAV_LENIENT_PASSAGES[0], `- ת is ALWAYS pronounced "t" (Sephardic / Modern Israeli). Only "t" is correct. Hearing "s" is a mispronunciation.`)
+      .replace(TAV_LENIENT_PASSAGES[1], `- ת with/without dagesh: ALWAYS "t" (Sephardic). Hearing "s" is a mispronunciation — flag it.`)
+      .replace(TAV_LENIENT_PASSAGES[2], `- ת without dagesh: ALWAYS "t" (Sephardic). Hearing "s" is NOT valid for this student.`)
+      .replace(TAV_LENIENT_PASSAGES[3], `- "s" → ת cannot map to "s" in Sephardic. FLAG as mispronunciation.`)
+      .replace(TAV_LENIENT_PASSAGES[4], `- Student says "hazot" for הַזֹּאת → transcription: "hazot". In Sephardic mode this is correct (ת = "t"). Score normally.`)
+      .replace(HAZOS_WORKED_EXAMPLE, HAZOS_SEPHARDIC_REPLACEMENT)
+    overrides.push(`STUDENT TRADITION: SEPHARDIC (Modern Israeli). ת is ALWAYS "t" — never "s". Flag every "s" sound where the reference shows ת.`)
+  } else if (tradition === 'ashkenazic') {
+    prompt = prompt
+      .replace(TAV_LENIENT_PASSAGES[0], `- ת WITHOUT dagesh: pronounced "s" (sav, Ashkenazic). Hearing "t" is a mispronunciation. ת WITH dagesh (תּ): "t".`)
+      .replace(TAV_LENIENT_PASSAGES[1], `- ת WITH dagesh: "t". ת WITHOUT dagesh: "s" (Ashkenazic sav). The two sounds are NOT interchangeable. Flag mismatches.`)
+      .replace(TAV_LENIENT_PASSAGES[2], `- ת WITHOUT dagesh: ALWAYS "s" (Ashkenazic sav). Hearing "t" is a mispronunciation.`)
+      .replace(TAV_LENIENT_PASSAGES[3], `- "s" → matches ת without dagesh in Ashkenazic ✓`)
+      .replace(TAV_LENIENT_PASSAGES[4], `- Student says "hazos" for הַזֹּאת → transcription: "hazos". In Ashkenazic mode this is correct. "Hazot" with "t" instead would be a mispronunciation in this mode — flag it.`)
+      .replace(HAZOS_WORKED_EXAMPLE, HAZOS_ASHKENAZIC_REPLACEMENT)
+    overrides.push(`STUDENT TRADITION: ASHKENAZIC. ת with dagesh (תּ) is "t". ת without dagesh is "s" (sav). The dagesh determines the sound — flag any swap.`)
+  }
+
+  if (shevaMode === 'ignore') {
+    overrides.push(`SHEVA DISTINCTION DISABLED: Do NOT flag any sheva-related errors. Score syllables based only on consonant identity and vowel sounds, ignoring sheva treatment entirely. The SHEVA RULES section below is SUSPENDED.`)
+  }
+
+  const overrideSection = overrides.length > 0
+    ? `IMPORTANT OVERRIDES — these take precedence over any conflicting rule below:\n\n${overrides.join('\n\n')}\n\n---\n\n`
+    : ''
+
+  return overrideSection + prompt
+}
+
+export async function assessWithOpenAI(audioBlob, referenceText, settings = {}) {
   const key = import.meta.env.VITE_OPENAI_API_KEY
   if (!key) throw new Error('OpenAI API key not configured. Set VITE_OPENAI_API_KEY in your environment.')
 
   const wavBlob = await blobToWav(audioBlob)
   const base64 = await blobToBase64(wavBlob)
+
+  const systemPrompt = buildSystemPrompt(settings)
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -265,7 +344,7 @@ export async function assessWithOpenAI(audioBlob, referenceText) {
       model: MODEL,
       modalities: ['text'],
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         {
           role: 'user',
           content: [

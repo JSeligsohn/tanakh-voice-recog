@@ -2,9 +2,14 @@ import { useState, useRef, useEffect } from 'react'
 import { psukim } from './data/psukim'
 import { startPronunciationAssessment } from './services/speechAssessment'
 import { assessWithOpenAI } from './services/openaiAssessment'
+import { assessWithOpenAIRules } from './services/openaiRulesAssessment'
+import { assessManual } from './services/manualAssessment'
 import { speakHebrew } from './services/tts'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
+import ProgressView from './components/ProgressView'
+import TeacherRoster from './components/TeacherRoster'
+import { dummyStudents } from './data/progressDummy'
 import './App.css'
 
 function scoreColor(score, errorType) {
@@ -23,16 +28,21 @@ function scoreLabel(score, errorType) {
   return 'Incorrect'
 }
 
-function WordChip({ word, score, errorType, isSelected, onClick }) {
+function WordChip({ word, score, errorType, isSelected, onClick, showScore }) {
   const color = scoreColor(score, errorType)
   const isOmitted = errorType === 'Omission'
 
   return (
     <span
-      className={`word-chip ${isSelected ? 'word-chip--selected' : ''}`}
+      className={`word-chip ${isSelected ? 'word-chip--selected' : ''} ${showScore ? 'word-chip--with-score' : ''}`}
       onClick={onClick}
       title="Click for phoneme breakdown"
     >
+      {showScore && (
+        <span className="word-chip-score" style={{ color }}>
+          {isOmitted ? '—' : Math.round(score)}
+        </span>
+      )}
       <span
         className="word-text"
         style={{
@@ -51,7 +61,7 @@ function WordChip({ word, score, errorType, isSelected, onClick }) {
 }
 
 function PhonemePanel({ wordData, provider, onClose }) {
-  const { word, score, errorType, phonemes } = wordData
+  const { word, score, errorType, phonemes, phoneticHeard } = wordData
   const color = scoreColor(score, errorType)
   const groups = splitHebrewToGroups(word)
   // OpenAI returns natural Hebrew syllables (consonant+vowel groupings) — display
@@ -101,6 +111,13 @@ function PhonemePanel({ wordData, provider, onClose }) {
         <span className="phoneme-panel-word" dir="rtl" lang="he">{word}</span>
         <button className="phoneme-panel-close" onClick={() => { cancelRef.current?.(); onClose() }} aria-label="Close">✕</button>
       </div>
+
+      {phoneticHeard && errorType !== 'Omission' && (
+        <div className="phoneme-heard">
+          <span className="phoneme-heard-label">Heard:</span>
+          <span className="phoneme-heard-text">{phoneticHeard}</span>
+        </div>
+      )}
 
       {breakdownItems.length > 0 ? (
         <>
@@ -216,8 +233,22 @@ export default function App() {
     if (stored === 'gemini') return 'openai' // migrate prior local value
     return stored ?? 'azure'
   })
+  const [tradition, setTradition] = useState(() => localStorage.getItem('tanakh-tradition') ?? 'sephardic')
+  const [shevaMode, setShevaMode] = useState(() => localStorage.getItem('tanakh-sheva-mode') ?? 'enforce')
+  const [manualInput, setManualInput] = useState('')
+
+  // Top-level tab navigation: 'practice' (recording UI) or 'progress' (dashboards)
+  const [activeTab, setActiveTab] = useState('practice')
+  // Dev role toggle for prototyping the progress views (will become real auth later)
+  const [devRole, setDevRole] = useState('student')
+  // Which student the "self" view shows when devRole === 'student'. Fixed for now.
+  const studentSelfId = 's1'
+  // Which student the teacher is currently drilling into (null = show roster)
+  const [teacherViewingId, setTeacherViewingId] = useState(null)
 
   useEffect(() => { localStorage.setItem('tanakh-provider', provider) }, [provider])
+  useEffect(() => { localStorage.setItem('tanakh-tradition', tradition) }, [tradition])
+  useEffect(() => { localStorage.setItem('tanakh-sheva-mode', shevaMode) }, [shevaMode])
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
@@ -420,7 +451,7 @@ export default function App() {
       3000
     )
 
-    if (provider === 'openai') {
+    if (provider === 'openai' || provider === 'openai-rules') {
       // No live streaming for OpenAI — recorder runs alone, assessment happens after Done.
       clearTimeout(prepareTimerRef.current)
       setPhase('recording')
@@ -462,7 +493,7 @@ export default function App() {
     )
   }
 
-  async function runOpenAIAssessment() {
+  async function runOpenAIAssessment(useRulesEngine) {
     const blob = await (blobPromiseRef.current ?? Promise.resolve(null))
     if (!blob) {
       setPhase('error')
@@ -470,7 +501,8 @@ export default function App() {
       return
     }
     try {
-      const { words, scores, rawSegment } = await assessWithOpenAI(blob, pasuk.text)
+      const assess = useRulesEngine ? assessWithOpenAIRules : assessWithOpenAI
+      const { words, scores, rawSegment } = await assess(blob, pasuk.text, { tradition, shevaMode })
       const reconciled = reconcileWords(pasuk.text, words)
       const audioUrl = URL.createObjectURL(blob)
       setCurrentAudioUrl(audioUrl)
@@ -490,10 +522,25 @@ export default function App() {
     setPhase('processing')
     stopMediaRecorder()
     if (provider === 'openai') {
-      runOpenAIAssessment()
+      runOpenAIAssessment(false)
+    } else if (provider === 'openai-rules') {
+      runOpenAIAssessment(true)
     } else {
       recognizerRef.current?.stop()
     }
+  }
+
+  function handleManualGrade() {
+    setListenPhase('idle')
+    cancelTtsRef.current?.()
+    const { words, scores, rawSegment } = assessManual(pasuk.text, manualInput, { tradition, shevaMode })
+    const reconciled = reconcileWords(pasuk.text, words)
+    setCurrentRawSegments([rawSegment])
+    addToHistory(reconciled, scores, null, [rawSegment])
+    setPhase('done')
+    setScores(scores)
+    setWordResults(reconciled)
+    if (window.innerWidth > 640) setShowHistory(true)
   }
 
   function handleCancel() {
@@ -533,6 +580,9 @@ export default function App() {
     })
   }
 
+  const studentSelf = dummyStudents.find(s => s.id === studentSelfId) ?? dummyStudents[0]
+  const teacherViewingStudent = dummyStudents.find(s => s.id === teacherViewingId)
+
   return (
     <div className={`app-shell ${showHistory ? 'app-shell--open' : ''}`}>
       <div className="app">
@@ -541,7 +591,7 @@ export default function App() {
             <h1>תנ״ך Reading Practice</h1>
             <p>Record yourself reading the verse and receive word-by-word pronunciation feedback</p>
           </div>
-          {history.filter(e => e.pasukIdx === pasukIdx).length > 0 && (
+          {activeTab === 'practice' && history.filter(e => e.pasukIdx === pasukIdx).length > 0 && (
             <button
               className={`btn-history-toggle ${showHistory ? 'btn-history-toggle--active' : ''}`}
               onClick={() => setShowHistory(s => !s)}
@@ -553,6 +603,55 @@ export default function App() {
           )}
         </header>
 
+        <nav className="main-nav">
+          <div className="main-nav-tabs">
+            <button
+              className={`main-nav-tab ${activeTab === 'practice' ? 'main-nav-tab--active' : ''}`}
+              onClick={() => setActiveTab('practice')}
+            >
+              Practice
+            </button>
+            <button
+              className={`main-nav-tab ${activeTab === 'progress' ? 'main-nav-tab--active' : ''}`}
+              onClick={() => setActiveTab('progress')}
+            >
+              Progress
+            </button>
+          </div>
+          <div className="dev-role-toggle">
+            <span className="dev-role-label">[dev]</span>
+            <button
+              className={`dev-role-btn ${devRole === 'student' ? 'dev-role-btn--active' : ''}`}
+              onClick={() => setDevRole('student')}
+            >
+              Student
+            </button>
+            <button
+              className={`dev-role-btn ${devRole === 'teacher' ? 'dev-role-btn--active' : ''}`}
+              onClick={() => setDevRole('teacher')}
+            >
+              Teacher
+            </button>
+          </div>
+        </nav>
+
+        {activeTab === 'progress' && (
+          <main className="app-main">
+            {devRole === 'student' ? (
+              <ProgressView student={studentSelf} viewer="student" />
+            ) : teacherViewingStudent ? (
+              <ProgressView
+                student={teacherViewingStudent}
+                viewer="teacher"
+                onBack={() => setTeacherViewingId(null)}
+              />
+            ) : (
+              <TeacherRoster students={dummyStudents} onSelect={s => setTeacherViewingId(s.id)} />
+            )}
+          </main>
+        )}
+
+        {activeTab === 'practice' && (
         <main className="app-main">
           <div className="pasuk-selector">
             <label htmlFor="pasuk-select">Verse</label>
@@ -589,12 +688,76 @@ export default function App() {
                 className={`provider-btn ${provider === 'openai' ? 'provider-btn--active' : ''}`}
                 onClick={() => setProvider('openai')}
                 disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
-                title="OpenAI gpt-4o-audio — prompted for Ashkenazic pronunciation"
+                title="OpenAI gpt-audio — LLM does transcription AND scoring"
               >
-                OpenAI
+                OpenAI (LLM)
+              </button>
+              <button
+                className={`provider-btn ${provider === 'openai-rules' ? 'provider-btn--active' : ''}`}
+                onClick={() => setProvider('openai-rules')}
+                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                title="OpenAI transcription + deterministic rules engine for scoring"
+              >
+                OpenAI (Rules)
+              </button>
+              <button
+                className={`provider-btn ${provider === 'manual' ? 'provider-btn--active' : ''}`}
+                onClick={() => setProvider('manual')}
+                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                title="Type phonetic transcription directly — tests the rules engine without OpenAI"
+              >
+                Manual
               </button>
             </div>
           </div>
+
+          {(provider === 'openai' || provider === 'openai-rules' || provider === 'manual') && (
+            <div className="settings-group">
+              <div className="provider-selector">
+                <span className="provider-label">Tradition</span>
+                <div className="provider-seg">
+                  <button
+                    className={`provider-btn ${tradition === 'sephardic' ? 'provider-btn--active' : ''}`}
+                    onClick={() => setTradition('sephardic')}
+                    disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                    title="ת always 't'; standard Modern Israeli vowels"
+                  >
+                    Sephardic
+                  </button>
+                  <button
+                    className={`provider-btn ${tradition === 'ashkenazic' ? 'provider-btn--active' : ''}`}
+                    onClick={() => setTradition('ashkenazic')}
+                    disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                    title="ת with dagesh 't', without 's' (sav); Ashkenazic vowels"
+                  >
+                    Ashkenazic
+                  </button>
+                </div>
+              </div>
+
+              <div className="provider-selector">
+                <span className="provider-label">Sheva</span>
+                <div className="provider-seg">
+                  <button
+                    className={`provider-btn ${shevaMode === 'enforce' ? 'provider-btn--active' : ''}`}
+                    onClick={() => setShevaMode('enforce')}
+                    disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                    title="Distinguish sheva na (vocal) from sheva nach (silent)"
+                  >
+                    Enforce
+                  </button>
+                  <button
+                    className={`provider-btn ${shevaMode === 'ignore' ? 'provider-btn--active' : ''}`}
+                    onClick={() => setShevaMode('ignore')}
+                    disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                    title="Ignore sheva na/nach distinction — easier for beginners"
+                  >
+                    Ignore
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="pasuk-card">
             <div className="hebrew-text" dir="rtl" lang="he">
@@ -605,6 +768,7 @@ export default function App() {
                         {...w}
                         isSelected={selectedWordIdx === i}
                         onClick={() => handleWordClick(i)}
+                        showScore
                       />
                       {i < modeWords.length - 1 ? ' ' : null}
                     </span>
@@ -612,9 +776,56 @@ export default function App() {
                 : <span>{pasuk.text}</span>
               }
             </div>
-            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && (
-              <p className="click-hint">Click any highlighted word to see phoneme breakdown</p>
-            )}
+            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && (() => {
+              const issues = modeWords
+                .map((w, idx) => ({ word: w, idx }))
+                .filter(({ word }) => word.errorType !== 'None' || word.phonemes?.some(p => p.note))
+              if (issues.length === 0) {
+                return <p className="click-hint">All words scored cleanly. Click any word to see the breakdown.</p>
+              }
+              return (
+                <div className="word-issues">
+                  <div className="word-issues-header">Issues to work on</div>
+                  <ul className="word-issues-list">
+                    {issues.map(({ word, idx }) => {
+                      const notes = (word.phonemes ?? []).filter(p => p.note)
+                      return (
+                        <li key={idx} className="word-issues-item">
+                          <div className="word-issues-head">
+                            <button
+                              className="word-issues-word"
+                              dir="rtl"
+                              lang="he"
+                              onClick={() => handleWordClick(idx)}
+                            >
+                              {word.word}
+                            </button>
+                            {word.phoneticHeard && word.errorType !== 'Omission' && (
+                              <span className="word-issues-heard">heard: <code>{word.phoneticHeard}</code></span>
+                            )}
+                          </div>
+                          {word.errorType === 'Omission'
+                            ? <span className="word-issues-omission">— skipped</span>
+                            : word.errorType === 'Insertion'
+                              ? <span className="word-issues-omission">— extra word</span>
+                              : notes.length > 0
+                                ? <ul className="word-issues-notes">
+                                    {notes.map((n, j) => (
+                                      <li key={j}>
+                                        <span className="word-issues-syllable" dir="rtl" lang="he">{n.phoneme}</span>
+                                        <span className="word-issues-note">{n.note}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                : <span className="word-issues-omission">— marked incorrect</span>
+                          }
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })()}
             <div className="pasuk-meta">
               <div className="pasuk-meta-top">
                 <span className="pasuk-ref">{pasuk.reference}</span>
@@ -661,7 +872,29 @@ export default function App() {
               </div>
             ) : (
               <>
-                {phase === 'idle' && (
+                {phase === 'idle' && provider === 'manual' && (
+                  <div className="manual-input-group">
+                    <label className="manual-input-label">
+                      Type the phonetic transcription (one word per space, matching the reference word count):
+                    </label>
+                    <textarea
+                      className="manual-input"
+                      value={manualInput}
+                      onChange={e => setManualInput(e.target.value)}
+                      placeholder={`e.g. vayomer hashem el-avram lech-lecha…`}
+                      rows={2}
+                    />
+                    <button
+                      className="btn btn-record"
+                      onClick={handleManualGrade}
+                      disabled={!manualInput.trim()}
+                    >
+                      Grade
+                    </button>
+                  </div>
+                )}
+
+                {phase === 'idle' && provider !== 'manual' && (
                   <button
                     className="btn btn-record"
                     onClick={handleRecord}
@@ -797,9 +1030,10 @@ export default function App() {
             </div>
           )}
         </main>
+        )}
       </div>
 
-      {showHistory && (
+      {activeTab === 'practice' && showHistory && (
         <>
           <button
             className="sidebar-backdrop"

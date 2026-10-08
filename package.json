@@ -8,7 +8,8 @@
     "dev:loop": "until vite; do echo '--- vite exited, restarting in 2s ---'; sleep 2; done",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "esbuild": "^0.28.0",

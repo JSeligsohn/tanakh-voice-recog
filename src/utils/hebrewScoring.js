@@ -13,7 +13,12 @@ function vowelVariants(seg) {
   const base = seg.vowel ?? ''
   if (!base) return ['']
   const vowel = seg.atom?.vowel
-  const isFinal = !!seg.atom?.isFinal
+  // Last sounded syllable: the word's final letter, or the letter before a
+  // silent final ה/א (תּוֹרָה "torah", פֶּה "peh" — the trailing h is spelling)
+  const next = seg.nextAtom
+  const silentNext = next?.isFinal && !next.vowel &&
+    (next.letter === 'א' || (next.letter === 'ה' && !next.dagesh))
+  const isFinal = !!seg.atom?.isFinal || silentNext
   // altVowels: readings the rules engine accepts leniently (qamats katan read
   // as gadol, a sheva that may be silent). '' means "no vowel" is fine.
   const out = new Set([base, ...(seg.altVowels ?? [])])

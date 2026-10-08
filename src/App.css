@@ -518,6 +518,7 @@
 
 .pasuk-selector select {
   flex: 1;
+  min-width: 0; /* let long verse names shrink instead of overflowing on phones */
   padding: 0.5rem 0.75rem;
   border: 1px solid #d6d3d1;
   border-radius: 8px;
@@ -914,6 +915,10 @@
   font-size: 0.82rem;
   color: #44403c;
   white-space: nowrap;
+  /* Latin label + sound inside the RTL grid: keep them in LTR order so the
+     sound's start margin falls between them ("Patach a", not "Patacha") */
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .lb-sound {

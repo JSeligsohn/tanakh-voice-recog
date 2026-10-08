@@ -779,7 +779,8 @@ export default function App() {
                       {i < modeWords.length - 1 ? ' ' : null}
                     </span>
                   ))
-                : <span>{pasuk.text}</span>
+                // Word joiner after each maqef so a joined phrase never wraps mid-way
+                : <span>{pasuk.text.replaceAll('־', '־\u2060')}</span>
               }
             </div>
             {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && (

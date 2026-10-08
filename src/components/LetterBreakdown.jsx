@@ -13,9 +13,9 @@ const alephBetIndex = (l) => {
 }
 
 // Display order + labels for vowels, roughly by openness.
-const VOWEL_ORDER = ['patah','qamats','hataf-patah','hataf-qamats','segol','tzere','hataf-segol','hiriq','holam','qubuts','shuruk','sheva']
+const VOWEL_ORDER = ['patah','qamats','qamats-katan','hataf-patah','hataf-qamats','segol','tzere','hataf-segol','hiriq','holam','qubuts','shuruk','sheva']
 const VOWEL_LABEL = {
-  'patah':'Patach', 'qamats':'Kamatz', 'hataf-patah':'Hataf patach', 'hataf-qamats':'Hataf kamatz',
+  'patah':'Patach', 'qamats':'Kamatz', 'qamats-katan':'Kamatz katan', 'hataf-patah':'Hataf patach', 'hataf-qamats':'Hataf kamatz',
   'segol':'Segol', 'tzere':'Tzere', 'hataf-segol':'Hataf segol', 'hiriq':'Chirik',
   'holam':'Cholam', 'qubuts':'Kubutz', 'shuruk':'Shuruk', 'sheva':'Sheva',
 }
@@ -23,7 +23,7 @@ const VOWEL_LABEL = {
 // vowel sign is visible on its own. Shuruk/holam-male are shown on their vav.
 const VOWEL_MARK = {
   'sheva':'ְ', 'hataf-segol':'ֱ', 'hataf-patah':'ֲ', 'hataf-qamats':'ֳ',
-  'hiriq':'ִ', 'tzere':'ֵ', 'segol':'ֶ', 'patah':'ַ', 'qamats':'ָ',
+  'hiriq':'ִ', 'tzere':'ֵ', 'segol':'ֶ', 'patah':'ַ', 'qamats':'ָ', 'qamats-katan':'ָ',
   'holam':'ֹ', 'qubuts':'ֻ',
 }
 function vowelGlyph(name) {

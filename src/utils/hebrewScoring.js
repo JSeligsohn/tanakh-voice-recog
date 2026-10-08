@@ -14,7 +14,9 @@ function vowelVariants(seg) {
   if (!base) return ['']
   const vowel = seg.atom?.vowel
   const isFinal = !!seg.atom?.isFinal
-  const out = new Set([base])
+  // altVowels: readings the rules engine accepts leniently (qamats katan read
+  // as gadol, a sheva that may be silent). '' means "no vowel" is fine.
+  const out = new Set([base, ...(seg.altVowels ?? [])])
 
   if (vowel === 'tzere') {
     // tzere written as "e", "ei", "ey", "ay", "ai"
@@ -23,8 +25,8 @@ function vowelVariants(seg) {
     // "oy"/"oi" (Ashkenazic), "oh"/"ow" (American spelling: "shalohm")
     for (const v of ['oy', 'oi', 'oh', 'ow']) out.add(v)
   } else if (vowel === 'qamats') {
-    if (isFinal) out.add('ah') // "+ah" trailing only at word end
-    if (base === 'o') { out.add('aw'); out.add('oh') } // Ashkenazic kamatz / qamats katan
+    if (isFinal && out.has('a')) out.add('ah') // "+ah" trailing only at word end
+    if (out.has('o')) { out.add('aw'); out.add('oh') } // Ashkenazic kamatz / qamats katan
   } else if (vowel === 'patah') {
     if (isFinal) out.add('ah') // "+ah" trailing only at word end
   } else if (vowel === 'segol') {
@@ -73,6 +75,7 @@ function buildSyllables(atoms, segments) {
         consonant: seg.consonant,
         vowel: seg.vowel,
         shevaType: seg.shevaType,
+        qamatsType: seg.qamatsType,
         patachGenuvah: !!seg.patachGenuvah,
         vowelVariants: vVariants,
         variants: vVariants.map(v => seg.patachGenuvah ? v + c : c + v),
@@ -231,13 +234,16 @@ function alignSyllables(syllables, studentPhonetic) {
       if (syllables[j].expected) { nextSyl = syllables[j]; break }
     }
 
-    // Gemination: a doubled consonant ("vayyomer" for וַיֹּאמֶר, dagesh chazak)
-    // sounds the same as a single one. Skip the extra copy unless the next
-    // syllable legitimately starts with that same consonant.
+    // Gemination: a doubled consonant ("vayyomer" for וַיֹּאמֶר, "chonneni" for
+    // חָנֵּנִי — dagesh chazak) sounds the same as a single one. Skip the extra
+    // copy when the syllable then matches cleanly; otherwise the second copy
+    // may belong to the next syllable (הִנְנִי read "hinni" is a real error).
     const c0 = student[pos]
-    if (syl.consonant?.length === 1 && c0 === syl.consonant && student[pos + 1] === c0 &&
-        nextSyl?.consonant?.[0] !== c0) {
-      pos++
+    if (syl.consonant?.length === 1 && c0 === syl.consonant && student[pos + 1] === c0) {
+      const rest = student.slice(pos + 1)
+      const v = pickVariant(rest, syl.variants ?? [expected], nextSyl)
+      const tail = v != null && rest.slice(v.length)
+      if (v && (nextSyl ? nextSyllableCanStartAt(tail, nextSyl) : tail === '')) pos++
     }
 
     const remaining = student.slice(pos)
@@ -357,7 +363,9 @@ function alignSyllables(syllables, studentPhonetic) {
     if (syl.vowel) {
       const afterConsonant = remaining.slice(consumed)
       const vMatch = pickVariant(afterConsonant, syl.vowelVariants ?? [syl.vowel], nextSyl)
-      if (vMatch) {
+      if (!vMatch && syl.vowelVariants?.includes('')) {
+        vowelMatched = true // vowel is optional here (sheva that may be silent)
+      } else if (vMatch) {
         heardVowel = vMatch
         consumed += vMatch.length
         vowelMatched = true
@@ -586,7 +594,7 @@ function makeBreakdown(seg, consonantCorrect, vowelCorrect) {
       ? { letter: seg.atom.letter, sound: seg.consonant, correct: consonantCorrect }
       : null,
     vowel: seg.vowel
-      ? { name: seg.atom.vowel, sound: seg.vowel, correct: vowelCorrect }
+      ? { name: seg.qamatsType === 'katan' ? 'qamats-katan' : seg.atom.vowel, sound: seg.vowel, correct: vowelCorrect }
       : null,
   }
 }

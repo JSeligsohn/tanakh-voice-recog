@@ -48,8 +48,10 @@ function dedupeStutters(rawTokens) {
 // omissions (skipped reference words), insertions (extra spoken words), and
 // 1-3 student tokens combining for one reference word (for maqef-joined words
 // and other cases where the speaker's tokenization doesn't match Hebrew's).
-// Returns { heardByRef, stutters } where stutters[refIdx] is true if any of the
-// matched tokens for that ref were repeated by the student.
+// Returns { heardByRef, stutters, outOfOrder } where stutters[refIdx] is true if
+// any of the matched tokens for that ref were repeated by the student, and
+// outOfOrder[refIdx] is true if the word was recovered from a different position
+// (see recoverSwappedWords).
 export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
   const { tokens: studentTokens, stutterMap } = dedupeStutters(rawStudentTokens)
   const expected = referenceWords.map(w => {
@@ -128,6 +130,7 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
 
   const heardByRef = new Array(N).fill('')
   const stutters = new Array(N).fill(false)
+  const skippedTokens = [] // { j, refPos } — student tokens the DP left unassigned
   let i = N, j = M
   while (i > 0 || j > 0) {
     const mv = back[i][j]
@@ -143,10 +146,59 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
     } else if (mv.type === 'skip-ref') {
       i--
     } else {
+      skippedTokens.push({ j: j - 1, refPos: i })
       j--
     }
   }
-  return { heardByRef, stutters }
+  const outOfOrder = recoverSwappedWords(expected, studentTokens, heardByRef, skippedTokens)
+  return { heardByRef, stutters, outOfOrder }
+}
+
+// The DP is strictly forward, so a word read in the wrong position ("avram el"
+// for אֶל אַבְרָם) comes out as one omitted reference word plus one unassigned
+// student token. Pair those back up when the token clearly is that word and
+// was said nearby. Mutates heardByRef; returns outOfOrder flags.
+const SWAP_MIN_SIM = 0.7
+const SWAP_MAX_DISTANCE = 3
+function recoverSwappedWords(expected, studentTokens, heardByRef, skippedTokens) {
+  const outOfOrder = new Array(expected.length).fill(false)
+  const pairs = []
+  for (let r = 0; r < expected.length; r++) {
+    if (heardByRef[r]) continue
+    for (const t of skippedTokens) {
+      if (Math.abs(t.refPos - r) > SWAP_MAX_DISTANCE) continue
+      const sim = similarity(expected[r], studentTokens[t.j])
+      if (sim >= SWAP_MIN_SIM) pairs.push({ r, j: t.j, sim })
+    }
+  }
+  pairs.sort((a, b) => b.sim - a.sim)
+  const usedTokens = new Set()
+  for (const { r, j } of pairs) {
+    if (heardByRef[r] || usedTokens.has(j)) continue
+    heardByRef[r] = studentTokens[j]
+    outOfOrder[r] = true
+    usedTokens.add(j)
+  }
+  return outOfOrder
+}
+
+// Attach word-level alignment notes (stutters, out-of-order words) to scored
+// words from scoreWords. The note goes on the first syllable for visibility.
+const STUTTER_NOTE = 'Stuttered/repeated this word — said multiple times before moving on.'
+const OUT_OF_ORDER_NOTE = 'Read out of order — this word was said in a different position in the verse.'
+const OUT_OF_ORDER_MAX_SCORE = 70
+export function applyAlignmentNotes(scored, { stutters = [], outOfOrder = [] }) {
+  return scored.map((w, i) => {
+    if (w.errorType === 'Omission') return w
+    const notes = [stutters[i] && STUTTER_NOTE, outOfOrder[i] && OUT_OF_ORDER_NOTE].filter(Boolean)
+    if (notes.length === 0) return w
+    const extra = notes.join(' ')
+    const syllables = w.syllables.length > 0
+      ? [{ ...w.syllables[0], note: w.syllables[0].note ? `${w.syllables[0].note} ${extra}` : extra }, ...w.syllables.slice(1)]
+      : w.syllables
+    if (!outOfOrder[i]) return { ...w, syllables }
+    return { ...w, syllables, score: Math.min(w.score, OUT_OF_ORDER_MAX_SCORE), errorType: 'OutOfOrder' }
+  })
 }
 
 // Split a free-form phonetic string into tokens for the alignment.

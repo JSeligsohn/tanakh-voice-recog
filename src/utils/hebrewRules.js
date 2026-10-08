@@ -44,8 +44,25 @@ const LONG_VOWELS = new Set(['qamats', 'tzere', 'holam', 'shuruk'])
 
 // ── Tokenizer ────────────────────────────────────────────────────────
 // Parses a Hebrew word into atoms: { letter, vowel, dagesh, shinDot, sinDot, isFinal }
+//
+// Maqef-joined words (אֶל־אַבְרָם) are tokenized one component at a time so each
+// component keeps its own word-start and word-end: `wordStart` marks the first
+// atom of every component, `isFinal` the last, and `beforeMaqef` the last atom
+// of every component except the final one.
 
 export function tokenizeWord(word) {
+  const parts = word.split(MAQEF).filter(Boolean)
+  return parts.flatMap((part, pi) => {
+    const atoms = tokenizeComponent(part)
+    if (atoms.length > 0) {
+      atoms[0].wordStart = true
+      if (pi < parts.length - 1) atoms[atoms.length - 1].beforeMaqef = true
+    }
+    return atoms
+  })
+}
+
+function tokenizeComponent(word) {
   const raw = []
   let current = null
 
@@ -53,8 +70,8 @@ export function tokenizeWord(word) {
     const code = char.codePointAt(0)
     // Skip cantillation marks (U+0591–U+05AF)
     if (code >= 0x0591 && code <= 0x05AF) continue
-    // Skip meteg/rafe and maqef
-    if (code === 0x05BD || char === MAQEF) continue
+    // Skip meteg/rafe
+    if (code === 0x05BD) continue
 
     // Base consonant (U+05D0–U+05EA)
     if (code >= 0x05D0 && code <= 0x05EA) {
@@ -122,10 +139,10 @@ export function determineShevaType(atoms, index) {
   const atom = atoms[index]
   if (atom.vowel !== 'sheva') return null
 
-  // S1: start of word
-  if (index === 0) return 'na'
-  // S5: end of word
-  if (index === atoms.length - 1) return 'nach'
+  // S1: start of word (or of a maqef component)
+  if (index === 0 || atom.wordStart) return 'na'
+  // S5: end of word (or of a maqef component)
+  if (index === atoms.length - 1 || atom.isFinal) return 'nach'
 
   const prev = atoms[index - 1]
   const next = atoms[index + 1]
@@ -134,8 +151,8 @@ export function determineShevaType(atoms, index) {
   if (next?.vowel === 'sheva') return 'nach'
   if (prev?.vowel === 'sheva') return 'na'
 
-  // S4: under the first of two identical consecutive letters
-  if (prev?.letter === atom.letter) return 'na'
+  // S4: under the first of two identical consecutive letters (הִנְנִי "hineni")
+  if (next?.letter === atom.letter) return 'na'
 
   // S2: after a long vowel
   if (LONG_VOWELS.has(prev?.vowel)) return 'na'
@@ -154,9 +171,32 @@ export function getExpectedPhonetic(atoms, { tradition = 'sephardic', shevaMode 
   const segments = atoms.map((atom, i) => {
     const consonant = consonantSound(atom, atoms, i, tradition)
     const { vowel, shevaType } = vowelSound(atom, atoms, i, tradition, shevaMode)
+    // Patach genuvah: the "a" is sounded before the final guttural (רוּחַ "ruach")
+    if (isPatachGenuvah(atom)) {
+      return { atomIndex: i, atom, consonant, vowel, shevaType, patachGenuvah: true, sound: vowel + consonant }
+    }
     return { atomIndex: i, atom, consonant, vowel, shevaType, sound: consonant + vowel }
   })
   return { segments, fullPhonetic: segments.map(s => s.sound).join('') }
+}
+
+// Patach under a word-final ח, ע, or הּ (with mappiq) is a "stolen" patach: it
+// is read before the consonant, not after it (רוּחַ "ruach", שָׂמֵחַ "sameach",
+// גָּבֹהַּ "gavoah").
+function isPatachGenuvah(atom) {
+  if (!atom.isFinal || atom.wordStart || atom.vowel !== 'patah') return false
+  return atom.letter === 'ח' || atom.letter === 'ע' || (atom.letter === 'ה' && atom.dagesh)
+}
+
+// Qamats katan before a maqef: the maqef removes the word's stress, so a qamats
+// in a closed final syllable becomes a short "o" (כָּל־ "kol", not "kal").
+function isQamatsKatanBeforeMaqef(atoms, index) {
+  const closer = atoms[index + 1]
+  if (!closer?.beforeMaqef || atoms[index].isFinal) return false
+  if (closer.vowel && closer.vowel !== 'sheva') return false
+  // A silent letter leaves the syllable open (מָה־)
+  const silent = 'אוי'.includes(closer.letter) || (closer.letter === 'ה' && !closer.dagesh)
+  return !silent
 }
 
 function consonantSound(atom, atoms, index, tradition) {
@@ -212,6 +252,8 @@ function vowelSound(atom, atoms, index, tradition, shevaMode) {
     return { vowel: type === 'na' ? 'e' : '', shevaType: type }
   }
 
+  if (v === 'qamats' && isQamatsKatanBeforeMaqef(atoms, index)) return { vowel: 'o', shevaType: null }
+
   // Tradition-dependent vowels (option c): only differentiate when the dialect
   // actually distinguishes them acoustically. In Sephardic, patach/kamatz are
   // both "a" — we don't enforce a difference. In Ashkenazic, kamatz becomes "o".
@@ -226,7 +268,7 @@ function vowelSound(atom, atoms, index, tradition, shevaMode) {
     'qubuts':        'u',
     'hataf-segol':   'e',
     'hataf-patah':   'a',
-    'hataf-qamats':  'a',
+    'hataf-qamats':  'o',   // always "o" (חֳדָשִׁים "chodashim")
   }
   // Ashkenazic vowel preferences vary widely by region (Lithuanian, German,
   // Polish, American). We aim for the Modern American Ashkenazic baseline used

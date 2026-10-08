@@ -1,11 +1,14 @@
+import { entrySettings, settingsDiff } from '../utils/historySettings'
+
 function scoreColor(score) {
   if (score >= 80) return '#16a34a'
   if (score >= 60) return '#d97706'
   return '#dc2626'
 }
 
-function HistoryEntry({ entry, attemptNumber, isSelected, onSelect }) {
+function HistoryEntry({ entry, attemptNumber, isSelected, onSelect, currentSettings }) {
   const color = scoreColor(entry.scores.pronunciation)
+  const diff = settingsDiff(entrySettings(entry), currentSettings)
 
   return (
     <div
@@ -21,6 +24,12 @@ function HistoryEntry({ entry, attemptNumber, isSelected, onSelect }) {
           {Math.round(entry.scores.pronunciation)}
         </span>
       </div>
+
+      {diff.length > 0 && (
+        <div className="history-settings-tag" title="This attempt was graded with different settings than your current ones">
+          Graded as {diff.join(', ')}
+        </div>
+      )}
 
       <div className="history-words" dir="rtl" lang="he">
         {entry.wordResults.map((w, i) => (
@@ -39,7 +48,7 @@ function HistoryEntry({ entry, attemptNumber, isSelected, onSelect }) {
   )
 }
 
-export default function HistorySidebar({ history, selectedId, onSelect, onClose }) {
+export default function HistorySidebar({ history, selectedId, onSelect, onClose, currentSettings }) {
   const total = history.length
 
   return (
@@ -60,6 +69,7 @@ export default function HistorySidebar({ history, selectedId, onSelect, onClose 
               attemptNumber={total - i}
               isSelected={selectedId === entry.id}
               onSelect={onSelect}
+              currentSettings={currentSettings}
             />
           ))
         )}

@@ -7,6 +7,7 @@ import { assessManual } from './services/manualAssessment'
 import { speakHebrew } from './services/tts'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
+import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
 import ProgressView from './components/ProgressView'
 import TeacherRoster from './components/TeacherRoster'
@@ -23,6 +24,7 @@ function scoreColor(score, errorType) {
 function scoreLabel(score, errorType) {
   if (errorType === 'Omission') return 'Skipped'
   if (errorType === 'Insertion') return 'Extra word'
+  if (errorType === 'OutOfOrder') return 'Out of order'
   if (errorType === 'Mispronunciation') return 'Mispronounced'
   if (score >= 80) return 'Good'
   if (score >= 60) return 'Needs work'
@@ -417,6 +419,7 @@ export default function App() {
       wordResults: words,
       audioUrl,
       rawSegments,
+      settings: { tradition, shevaMode },
     }
     // Store up to 3 per verse; revoke dropped URL to free memory
     setHistory(prev => {
@@ -878,6 +881,14 @@ export default function App() {
             {viewingHistoryEntry ? (
               <div className="history-review-state">
                 <p className="history-review-label">Viewing Attempt #{viewingAttemptNumber}</p>
+                {(() => {
+                  const diff = settingsDiff(entrySettings(viewingHistoryEntry), { tradition, shevaMode })
+                  return diff.length > 0 && (
+                    <p className="history-settings-warning">
+                      Graded with different settings ({diff.join(', ')}) — scores reflect those rules, not your current ones.
+                    </p>
+                  )
+                })()}
                 <div className="history-review-actions">
                   {viewingHistoryEntry.audioUrl && (
                     <button
@@ -1067,6 +1078,7 @@ export default function App() {
             selectedId={viewingHistoryEntry?.id ?? null}
             onSelect={handleSelectHistoryEntry}
             onClose={() => { handleExitHistoryView(); setShowHistory(false) }}
+            currentSettings={{ tradition, shevaMode }}
           />
         </>
       )}

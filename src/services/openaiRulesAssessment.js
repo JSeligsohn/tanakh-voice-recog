@@ -7,7 +7,7 @@
 // genuinely good at — listening and transliterating sounds.
 
 import { scoreWords } from '../utils/hebrewScoring.js'
-import { alignByDP, tokenizePhonetic } from '../utils/phoneticAlignment.js'
+import { alignByDP, tokenizePhonetic, applyAlignmentNotes } from '../utils/phoneticAlignment.js'
 
 const MODEL = 'gpt-audio-1.5'
 
@@ -83,19 +83,12 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
   // Tokenize the model's transcription, then let DP alignment figure out which
   // tokens correspond to which reference words.
   const flatTokens = tokenizePhonetic(parsed.transcription ?? '')
-  const alignResult = flatTokens.length > 0
+  const alignment = flatTokens.length > 0
     ? alignByDP(referenceWords, flatTokens, settings)
-    : { heardByRef: referenceWords.map(() => ''), stutters: referenceWords.map(() => false) }
-  const { heardByRef, stutters } = alignResult
+    : { heardByRef: referenceWords.map(() => '') }
+  const { heardByRef } = alignment
 
-  const scored = scoreWords(referenceWords, heardByRef, settings).map((w, i) => {
-    if (!stutters[i] || w.errorType === 'Omission') return w
-    const stutterNote = 'Stuttered/repeated this word — said multiple times before moving on.'
-    const syllables = w.syllables.length > 0
-      ? [{ ...w.syllables[0], note: w.syllables[0].note ? `${w.syllables[0].note} ${stutterNote}` : stutterNote }, ...w.syllables.slice(1)]
-      : w.syllables
-    return { ...w, syllables }
-  })
+  const scored = applyAlignmentNotes(scoreWords(referenceWords, heardByRef, settings), alignment)
 
   const nonOmitted = scored.filter(w => w.errorType !== 'Omission')
   const accuracy = nonOmitted.length > 0

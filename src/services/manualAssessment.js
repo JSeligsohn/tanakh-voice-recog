@@ -3,22 +3,15 @@
 // burning API credits.
 
 import { scoreWords } from '../utils/hebrewScoring.js'
-import { alignByDP, tokenizePhonetic } from '../utils/phoneticAlignment.js'
+import { alignByDP, tokenizePhonetic, applyAlignmentNotes } from '../utils/phoneticAlignment.js'
 
 export function assessManual(referenceText, typedPhonetic, settings = {}) {
   const referenceWords = referenceText.split(/\s+/).filter(Boolean)
   const studentTokens = tokenizePhonetic(typedPhonetic)
-  const { heardByRef, stutters } = alignByDP(referenceWords, studentTokens, settings)
+  const alignment = alignByDP(referenceWords, studentTokens, settings)
+  const { heardByRef } = alignment
 
-  const scored = scoreWords(referenceWords, heardByRef, settings).map((w, i) => {
-    if (!stutters[i] || w.errorType === 'Omission') return w
-    const stutterNote = 'Stuttered/repeated this word — said multiple times before moving on.'
-    // Tag on the first syllable for visibility
-    const syllables = w.syllables.length > 0
-      ? [{ ...w.syllables[0], note: w.syllables[0].note ? `${w.syllables[0].note} ${stutterNote}` : stutterNote }, ...w.syllables.slice(1)]
-      : w.syllables
-    return { ...w, syllables, errorType: w.errorType === 'None' ? 'None' : w.errorType }
-  })
+  const scored = applyAlignmentNotes(scoreWords(referenceWords, heardByRef, settings), alignment)
 
   const nonOmitted = scored.filter(w => w.errorType !== 'Omission')
   const accuracy = nonOmitted.length > 0

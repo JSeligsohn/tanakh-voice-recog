@@ -1731,6 +1731,25 @@
   margin: 0;
 }
 
+.history-settings-warning {
+  font-size: 0.78rem;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  margin: 0.25rem 0 0;
+}
+
+.history-settings-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  margin-top: 0.3rem;
+}
+
 .history-review-actions {
   display: flex;
   align-items: center;

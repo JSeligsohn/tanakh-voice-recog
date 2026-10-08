@@ -3,30 +3,42 @@
 
 import { tokenizeWord, getExpectedPhonetic } from './hebrewRules.js'
 
-// For a given syllable, compute all acceptable Latin-letter renderings.
+// For a given syllable, compute all acceptable Latin renderings of its vowel.
 // The set depends on the Hebrew vowel sign (not on tradition) — different
-// transliteration conventions render the same vowel differently.
-function syllableVariants(seg) {
-  const c = seg.consonant ?? ''
-  const base = seg.sound
+// transliteration conventions render the same vowel differently. Variants that
+// end in a letter which could start the next syllable ("oh", "uh") are safe
+// because the aligner prefers the shortest variant that leaves the next
+// syllable able to start.
+function vowelVariants(seg) {
+  const base = seg.vowel ?? ''
+  if (!base) return ['']
   const vowel = seg.atom?.vowel
   const isFinal = !!seg.atom?.isFinal
   const out = new Set([base])
 
   if (vowel === 'tzere') {
-    // tzere written as "e", "ei", "ey", "ay", "ai" — diphthong variants are
-    // safe mid-word because they end in y/i (not a typical consonant)
-    for (const v of ['e', 'ei', 'ey', 'ay', 'ai']) out.add(c + v)
+    // tzere written as "e", "ei", "ey", "ay", "ai"
+    for (const v of ['ei', 'ey', 'ay', 'ai']) out.add(v)
   } else if (vowel === 'holam') {
-    for (const v of ['o', 'oy', 'oi']) out.add(c + v)
-    if (isFinal) out.add(c + 'oh') // "+oh" trailing only at word end
+    // "oy"/"oi" (Ashkenazic), "oh"/"ow" (American spelling: "shalohm")
+    for (const v of ['oy', 'oi', 'oh', 'ow']) out.add(v)
   } else if (vowel === 'qamats') {
-    if (isFinal) out.add(c + 'ah') // "+ah" trailing only at word end
-    if (base.endsWith('o')) out.add(c + 'aw') // Ashkenazic "aw" for kamatz
+    if (isFinal) out.add('ah') // "+ah" trailing only at word end
+    if (base === 'o') { out.add('aw'); out.add('oh') } // Ashkenazic kamatz / qamats katan
   } else if (vowel === 'patah') {
-    if (isFinal) out.add(c + 'ah') // "+ah" trailing only at word end
+    if (isFinal) out.add('ah') // "+ah" trailing only at word end
   } else if (vowel === 'segol') {
-    if (isFinal) out.add(c + 'eh') // "+eh" trailing only at word end
+    if (isFinal) out.add('eh') // "+eh" trailing only at word end
+  } else if (vowel === 'hiriq') {
+    out.add('ee') // English spelling of "i" ("anee", "bereesheet")
+    if (isFinal) out.add('iy')
+  } else if (vowel === 'shuruk' || vowel === 'qubuts') {
+    out.add('oo')
+  } else if (vowel === 'sheva') {
+    // Sheva na is a schwa — heard as "e", "eh", "u" or "uh"
+    for (const v of ['eh', 'u', 'uh']) out.add(v)
+    // Before yud it colors toward "i" (בְּיוֹם "biyom")
+    if (seg.nextAtom?.letter === 'י') out.add('i')
   }
   return [...out]
 }
@@ -50,6 +62,9 @@ function buildSyllables(atoms, segments) {
       if (a.shinDot) display += 'ׁ'
       if (a.sinDot)  display += 'ׂ'
       if (a.vowel && VOWEL_GLYPH[a.vowel] && a.vowel !== 'shuruk') display += VOWEL_GLYPH[a.vowel]
+      const nextAtom = a.isFinal ? null : atoms[seg.atomIndex + 1]
+      const vVariants = vowelVariants({ ...seg, nextAtom })
+      const c = seg.consonant ?? ''
       return {
         atomIndex: seg.atomIndex,
         atom: a,
@@ -58,7 +73,9 @@ function buildSyllables(atoms, segments) {
         consonant: seg.consonant,
         vowel: seg.vowel,
         shevaType: seg.shevaType,
-        variants: syllableVariants(seg),
+        patachGenuvah: !!seg.patachGenuvah,
+        vowelVariants: vVariants,
+        variants: vVariants.map(v => seg.patachGenuvah ? v + c : c + v),
       }
     })
 }
@@ -69,6 +86,9 @@ function buildSyllables(atoms, segments) {
 //   tz, ts, tzh  → ts   (צ tsadi)
 //   kh, x        → ch   (ח/כ guttural)
 //   q            → k    (ק)
+//   j            → y    (German/academic "Jisrael" — Hebrew has no "j" sound)
+//   w + vowel    → v    (academic "wayomer" for vav)
+// Apostrophes for alef/ayin ("'esav") are dropped with the other punctuation.
 function normalizeStudent(phonetic) {
   return (phonetic ?? '')
     .toLowerCase()
@@ -79,6 +99,8 @@ function normalizeStudent(phonetic) {
     .replace(/kh/g, 'ch')
     .replace(/\bx/g, 'ch')
     .replace(/q/g, 'k')
+    .replace(/j/g, 'y')
+    .replace(/w(?=[aeiou])/g, 'v')
     .trim()
 }
 
@@ -139,6 +161,23 @@ function matchAnyVariant(remaining, expected) {
   return null
 }
 
+// Pick which of a syllable's accepted variants the student said at the start of
+// `remaining`: the SHORTEST one whose tail leaves the next syllable able to
+// start, else the shortest that matches at all. This stops a longer variant
+// from eating chars that belong to the next syllable. Example: רֹעִי "roi" —
+// use "ro" for cholam (not "roi"), so the chirik syllable can claim its "i".
+// With no audible syllable left, prefer the variant that ends the word ("aniy").
+function pickVariant(remaining, variants, nextSyl) {
+  let firstMatch = null
+  for (const v of variants.slice().sort((a, b) => a.length - b.length)) {
+    if (!v || !cleanMatch(remaining, v)) continue
+    if (!firstMatch) firstMatch = v
+    const tail = remaining.slice(v.length)
+    if (nextSyl ? nextSyllableCanStartAt(tail, nextSyl) : tail === '') return v
+  }
+  return firstMatch
+}
+
 // Same disambiguation but for indexOf (look-ahead matching)
 function cleanIndexOf(haystack, needle) {
   let from = 0
@@ -184,7 +223,6 @@ function alignSyllables(syllables, studentPhonetic) {
       continue
     }
 
-    const remaining = student.slice(pos)
     // Look ahead to the next AUDIBLE syllable, skipping silent ones (alef/ayin,
     // final silent ה). A silent next syllable would pass any alignment check
     // vacuously, so we need to peek further.
@@ -193,22 +231,18 @@ function alignSyllables(syllables, studentPhonetic) {
       if (syllables[j].expected) { nextSyl = syllables[j]; break }
     }
 
-    // Variant selection rule: prefer the SHORTEST variant whose tail leaves the
-    // next syllable able to start. This stops a longer diphthong variant from
-    // eating chars that belong to the next syllable. Example: רֹעִי "roi" — use
-    // "ro" for cholam (not "roi"), so the chirik syllable can claim its "i".
-    const variants = (syl.variants ?? [expected]).slice().sort((a, b) => a.length - b.length)
-    let variantMatch = null
-    let firstMatch = null
-    for (const v of variants) {
-      if (!cleanMatch(remaining, v)) continue
-      if (!firstMatch) firstMatch = v
-      if (nextSyllableCanStartAt(remaining.slice(v.length), nextSyl)) {
-        variantMatch = v
-        break
-      }
+    // Gemination: a doubled consonant ("vayyomer" for וַיֹּאמֶר, dagesh chazak)
+    // sounds the same as a single one. Skip the extra copy unless the next
+    // syllable legitimately starts with that same consonant.
+    const c0 = student[pos]
+    if (syl.consonant?.length === 1 && c0 === syl.consonant && student[pos + 1] === c0 &&
+        nextSyl?.consonant?.[0] !== c0) {
+      pos++
     }
-    if (!variantMatch) variantMatch = firstMatch                       // no aligned variant, take any
+
+    const remaining = student.slice(pos)
+
+    let variantMatch = pickVariant(remaining, syl.variants ?? [expected], nextSyl)
     if (!variantMatch) variantMatch = matchAnyVariant(remaining, expected)
     if (variantMatch) {
       // Check for vowel-elongation right after the matched syllable, but ONLY
@@ -237,6 +271,16 @@ function alignSyllables(syllables, studentPhonetic) {
       })
       pos += variantMatch.length + elongated.length
       continue
+    }
+
+    if (syl.patachGenuvah) {
+      const g = alignPatachGenuvah(syl, remaining)
+      if (g) {
+        const { consumed, ...rest } = g
+        matches.push({ ...syl, ...rest, heardAt: pos })
+        pos += Math.max(1, consumed)
+        continue
+      }
     }
 
     // Phase-by-phase matching: try consonant separately, then vowel separately.
@@ -312,7 +356,7 @@ function alignSyllables(syllables, studentPhonetic) {
     let vowelElongated = ''
     if (syl.vowel) {
       const afterConsonant = remaining.slice(consumed)
-      const vMatch = matchAnyVariant(afterConsonant, syl.vowel)
+      const vMatch = pickVariant(afterConsonant, syl.vowelVariants ?? [syl.vowel], nextSyl)
       if (vMatch) {
         heardVowel = vMatch
         consumed += vMatch.length
@@ -385,6 +429,27 @@ function alignSyllables(syllables, studentPhonetic) {
   return { matches, trailing }
 }
 
+// Patach genuvah syllables are vowel-then-consonant ("ach"), so the regular
+// consonant-then-vowel phases don't fit. Called only after the accepted
+// variants failed. Returns null to fall back to the generic phases.
+function alignPatachGenuvah(syl, remaining) {
+  const c = syl.consonant
+  // Most common error: reading the patach after the letter ("rucha")
+  if (c && cleanMatch(remaining, c + 'a')) {
+    return {
+      status: 'genuvah-reversed', heard: c + 'a', heardConsonant: c, heardVowel: 'a',
+      consonantMatched: true, vowelMatched: false, consumed: c.length + 1,
+    }
+  }
+  const heardVowel = remaining.match(/^[aeiouy]*/)[0]
+  const afterVowel = remaining.slice(heardVowel.length)
+  if (c && !cleanMatch(afterVowel, c)) return null
+  return {
+    status: 'vowel-mismatch', heard: heardVowel + (c ?? ''), heardConsonant: c, heardVowel,
+    consonantMatched: true, vowelMatched: false, consumed: heardVowel.length + (c?.length ?? 0),
+  }
+}
+
 // Per-syllable score derivation from the match status.
 function scoreSyllable(m, tradition, shevaMode) {
   // Silent atoms (e.g. final silent ה) always score 100
@@ -419,12 +484,31 @@ function scoreSyllable(m, tradition, shevaMode) {
     return { score: 90, note: '' } // benign extra vowel
   }
 
+  if (m.status === 'genuvah-reversed') {
+    return {
+      score: 75,
+      note: `Patach genuvah — the "a" is said before the final ${m.atom.letter}: "${m.expected}", not "${m.heard}".`,
+    }
+  }
+
   if (m.status === 'vowel-mismatch') {
     // Consonant right, vowel different
+    if (m.patachGenuvah) {
+      return {
+        score: 75,
+        note: `Patach genuvah — a short "a" belongs before the final ${m.atom.letter} ("${m.expected}") — heard "${m.heard}".`,
+      }
+    }
     if (m.shevaType === 'na' && shevaMode === 'enforce' && !m.heardVowel) {
       return {
         score: 70,
         note: `Sheva na should be pronounced as a brief "uh" — the consonants ran together.`,
+      }
+    }
+    if (m.shevaType === 'na' && shevaMode === 'enforce') {
+      return {
+        score: 75,
+        note: `Sheva na should be a brief "e" / "uh" — heard "${m.heardVowel}".`,
       }
     }
     return {
@@ -516,6 +600,14 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
   const atoms = tokenizeWord(referenceWord)
   const { segments, fullPhonetic } = getExpectedPhonetic(atoms, { tradition, shevaMode })
   const syllables = buildSyllables(atoms, segments)
+
+  // No letters to grade (e.g. a stray punctuation token) — nothing to score
+  if (syllables.length === 0) {
+    return {
+      word: referenceWord, score: 100, errorType: 'None',
+      phoneticHeard: heardPhonetic ?? '', expectedPhonetic: '', syllables: [],
+    }
+  }
 
   // Omission: no heard phonetic at all
   if (!heardPhonetic || normalizeStudent(heardPhonetic).length === 0) {

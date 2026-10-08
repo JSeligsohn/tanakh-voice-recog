@@ -47,6 +47,7 @@ export function assessManual(referenceText, typedPhonetic, settings = {}) {
       phoneme: s.phoneme,
       accuracyScore: s.accuracyScore,
       note: s.note,
+      breakdown: s.breakdown,
     })),
   }))
 

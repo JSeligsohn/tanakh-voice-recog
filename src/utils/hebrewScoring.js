@@ -232,6 +232,8 @@ function alignSyllables(syllables, studentPhonetic) {
         heardAt: pos,
         heard: variantMatch + elongated,
         vowelElongated: elongated,
+        consonantMatched: true,
+        vowelMatched: true,
       })
       pos += variantMatch.length + elongated.length
       continue
@@ -371,6 +373,8 @@ function alignSyllables(syllables, studentPhonetic) {
       heardVowel,
       insertedBefore,
       vowelElongated,
+      consonantMatched,
+      vowelMatched,
     })
     pos += Math.max(1, consumed)
   }
@@ -487,6 +491,22 @@ function buildMismatchNote(m, tradition) {
   return `${L} expected sound was not heard.`
 }
 
+// Per-syllable sound breakdown for the sound-by-sound report. Each audible sound
+// (the consonant letter and the vowel) is tagged correct/incorrect from the
+// alignment. Silent sounds — alef/ayin, sheva nach, final silent ה — produce an
+// empty Latin sound and are omitted, since they contribute no audible sound to
+// count. `seg` is a syllable object carrying { consonant, vowel, atom }.
+function makeBreakdown(seg, consonantCorrect, vowelCorrect) {
+  return {
+    consonant: seg.consonant
+      ? { letter: seg.atom.letter, sound: seg.consonant, correct: consonantCorrect }
+      : null,
+    vowel: seg.vowel
+      ? { name: seg.atom.vowel, sound: seg.vowel, correct: vowelCorrect }
+      : null,
+  }
+}
+
 // ── Public API ───────────────────────────────────────────────────────
 
 // Score a single word: returns { word, score, errorType, phoneticHeard,
@@ -509,6 +529,7 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
         phoneme: s.display,
         accuracyScore: 0,
         note: '',
+        breakdown: makeBreakdown(s, false, false),
       })),
     }
   }
@@ -517,7 +538,8 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
 
   const scoredSyllables = matches.map(m => {
     const { score, note } = scoreSyllable(m, tradition, shevaMode)
-    return { phoneme: m.display, accuracyScore: score, note, _match: m }
+    const breakdown = makeBreakdown(m, !!m.consonantMatched, !!m.vowelMatched)
+    return { phoneme: m.display, accuracyScore: score, note, breakdown, _match: m }
   })
 
   // Penalize any trailing chars the student said after the word's expected end.

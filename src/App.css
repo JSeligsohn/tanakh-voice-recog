@@ -776,6 +776,183 @@
   margin: 0.5rem 0 0;
 }
 
+/* ── Results view toggle (Words / By letter) ─ */
+.results-view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 0.85rem;
+  padding: 3px;
+  background: #f5f0e8;
+  border-radius: 8px;
+}
+
+.results-view-btn {
+  border: none;
+  background: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #78716c;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.results-view-btn--active {
+  background: white;
+  color: #7c1d1d;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Letter breakdown ────────────────────────  */
+.letter-breakdown {
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: #fbf9f6;
+  border: 1px solid #e7e5e4;
+  border-radius: 10px;
+}
+
+.lb-empty {
+  font-size: 0.85rem;
+  color: #78716c;
+  font-style: italic;
+  margin: 0.85rem 0 0;
+}
+
+.lb-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.lb-summary-score {
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.lb-summary-slash {
+  font-size: 1rem;
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+.lb-summary-label {
+  font-size: 0.85rem;
+  color: #57534e;
+}
+
+.lb-summary-pct { font-weight: 700; }
+
+.lb-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: #78716c;
+  margin: 0 0 0.75rem;
+}
+
+.lb-legend-note {
+  margin-left: 0.2rem;
+  color: #a8a29e;
+}
+
+.lb-section + .lb-section { margin-top: 0.9rem; }
+
+.lb-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #7c1d1d;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.55rem;
+}
+
+/* Multi-column so the aleph-bet flows vertically DOWN each column, and RTL so
+   the first column sits on the right and reading proceeds right-to-left. */
+.lb-grid {
+  direction: rtl;
+  column-width: 9.5rem;
+  column-gap: 1.75rem;
+}
+
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.13rem 0;
+  break-inside: avoid;
+}
+
+.lb-glyph {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1c1917;
+  min-width: 1.4rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Vowel signs are shown on a dotted-circle carrier (◌). Use one font that
+   contains BOTH the dotted circle and the nikud so they compose correctly
+   instead of the circle falling back to a mismatched font. Extra size + width
+   keeps the mark off the circle. */
+.lb-glyph--vowel {
+  font-family: 'Times New Roman', 'Frank Ruhl Libre', serif;
+  font-size: 1.55rem;
+  font-weight: 400;
+  min-width: 1.8rem;
+  line-height: 1;
+}
+
+.lb-label {
+  font-size: 0.82rem;
+  color: #44403c;
+  white-space: nowrap;
+}
+
+.lb-sound {
+  margin-inline-start: 0.3rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.74rem;
+  color: #a8a29e;
+}
+
+.lb-dots {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.lb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.lb-dot--ok  { background: #16a34a; }
+.lb-dot--bad { background: #dc2626; }
+
+.lb-legend .lb-dot { margin-left: 0.4rem; }
+.lb-legend .lb-dot:first-of-type { margin-left: 0; }
+
+.lb-count {
+  font-size: 0.76rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.2rem;
+  text-align: left;
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+
 /* ── Phoneme panel ───────────────────────── */
 .phoneme-panel {
   background: white;

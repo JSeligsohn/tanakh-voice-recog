@@ -126,6 +126,7 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
       phoneme: s.phoneme,
       accuracyScore: s.accuracyScore,
       note: s.note,
+      breakdown: s.breakdown,
     })),
   }))
 

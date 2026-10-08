@@ -7,6 +7,7 @@ import { assessManual } from './services/manualAssessment'
 import { speakHebrew } from './services/tts'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
+import LetterBreakdown from './components/LetterBreakdown'
 import ProgressView from './components/ProgressView'
 import TeacherRoster from './components/TeacherRoster'
 import { dummyStudents } from './data/progressDummy'
@@ -228,6 +229,8 @@ export default function App() {
   const [currentRawSegments, setCurrentRawSegments] = useState([])
   const [showDebug, setShowDebug] = useState(false)
   const [scoringMode, setScoringMode] = useState('default')
+  // Results display: word-by-word verse vs. alphabetical letter breakdown
+  const [resultsView, setResultsView] = useState('words')
   const [provider, setProvider] = useState(() => {
     const stored = localStorage.getItem('tanakh-provider')
     if (stored === 'gemini') return 'openai' // migrate prior local value
@@ -776,7 +779,26 @@ export default function App() {
                 : <span>{pasuk.text}</span>
               }
             </div>
-            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && (() => {
+            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && (
+              <div className="results-view-toggle">
+                <button
+                  className={`results-view-btn ${resultsView === 'words' ? 'results-view-btn--active' : ''}`}
+                  onClick={() => setResultsView('words')}
+                >
+                  Words
+                </button>
+                <button
+                  className={`results-view-btn ${resultsView === 'letters' ? 'results-view-btn--active' : ''}`}
+                  onClick={() => setResultsView('letters')}
+                >
+                  By letter
+                </button>
+              </div>
+            )}
+            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && resultsView === 'letters' && (
+              <LetterBreakdown wordResults={modeWords} />
+            )}
+            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && resultsView === 'words' && (() => {
               const issues = modeWords
                 .map((w, idx) => ({ word: w, idx }))
                 .filter(({ word }) => word.errorType !== 'None' || word.phonemes?.some(p => p.note))

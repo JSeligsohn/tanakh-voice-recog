@@ -66,3 +66,51 @@ export const checkItems = [
   { id: 'x-sameach', group: 'Silent and special letters', word: 'שָׂמֵחַ', sayAs: '"sah-MEH-akh"', expect: 'sameach', intent: 'correct', trad: 'sephardic' },
   { id: 'x-vayomer', group: 'Silent and special letters', word: 'וַיֹּאמֶר', sayAs: '"vah-YOH-mer"', expect: 'vayomer', accept: ['vayyomer'], intent: 'correct', trad: 'sephardic' },
 ]
+
+// Full verses: real readings in context, where the model has more reason to
+// "fix" what it hears and words run together. Each verse is recorded once
+// read correctly and once with mistakes planted at known words.
+//
+// Each verse item:
+//   pasukIdx — verse in psukim.js
+//   trad     — tradition to read and grade in
+//   plants   — deliberate mistakes: { index (word in the verse), sayAs, heard }
+//              where `heard` is the transcription a faithful model would write
+// Words without a plant must grade clean; planted words must be flagged.
+
+export const verseItems = [
+  { id: 'vs-12-1-clean', pasukIdx: 0, trad: 'sephardic', plants: [] },
+  {
+    id: 'vs-12-1-errors', pasukIdx: 0, trad: 'sephardic',
+    plants: [
+      { index: 1, sayAs: 'ha-SEM (shin as s)', heard: 'hasem' },
+      { index: 6, sayAs: 'oo-mi-VAYT (בּ as v)', heard: 'umivet' },
+      { index: 10, sayAs: 'ar-EH-kha (כּ as ch)', heard: 'arecha' },
+    ],
+  },
+  { id: 'vs-shema-clean', pasukIdx: 5, trad: 'ashkenazic', plants: [] },
+  {
+    id: 'vs-shema-errors', pasukIdx: 5, trad: 'ashkenazic',
+    plants: [
+      { index: 0, sayAs: 'SHMA (sheva na dropped)', heard: 'shma' },
+      { index: 1, sayAs: 'yiSH-ro-el (sin as shin)', heard: 'yishroel' },
+    ],
+  },
+  { id: 'vs-12-4-clean', pasukIdx: 3, trad: 'sephardic', plants: [] },
+  {
+    id: 'vs-12-4-errors', pasukIdx: 3, trad: 'sephardic',
+    plants: [
+      { index: 3, sayAs: 'di-VER (בּ as v)', heard: 'diver' },
+      { index: 10, sayAs: 'ben ha-MESH (ח as h)', heard: 'benhamesh' },
+      { index: 11, sayAs: 'sho-NEEM (kamatz as o in Sephardic)', heard: 'shonim' },
+    ],
+  },
+  { id: 'vs-az-yashir-clean', pasukIdx: 8, trad: 'ashkenazic', plants: [] },
+  {
+    id: 'vs-az-yashir-errors', pasukIdx: 8, trad: 'ashkenazic',
+    plants: [
+      { index: 2, sayAs: 'oo-BNAY (ב as b)', heard: 'ubney' },
+      { index: 5, sayAs: 'ha-ZOT (tav as t in Ashkenazic)', heard: 'hazot' },
+    ],
+  },
+]

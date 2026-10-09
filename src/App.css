@@ -217,6 +217,40 @@
 .tc-bad { color: #dc2626; font-weight: 600; }
 .tc-notes { flex-basis: 100%; color: #78716c; font-size: 0.78rem; }
 
+.tc-verse {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0.3rem 0;
+}
+
+.tc-plants { margin: 0.2rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; color: #44403c; }
+.tc-plant-word { font-family: 'Frank Ruhl Libre', serif; font-size: 1.05rem; }
+
+.tc-verse-words {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+/* One reference word with what the model heard for it, colored by outcome */
+.tc-vw {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid #e7e5e4;
+}
+
+.tc-vw [lang="he"] { font-family: 'Frank Ruhl Libre', serif; font-size: 1.05rem; }
+.tc-vw code { font-size: 0.72rem; }
+.tc-vw--ok { background: #f7fdf9; }
+.tc-vw--caught { background: #dcfce7; border-color: #16a34a; }
+.tc-vw--missed, .tc-vw--false-flag { background: #fef2f2; border-color: #dc2626; }
+
 @media (max-width: 640px) {
   .tc-item-main { flex-wrap: wrap; }
   .tc-word { min-width: 0; text-align: right; }

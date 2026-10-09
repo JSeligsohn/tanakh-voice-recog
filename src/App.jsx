@@ -239,6 +239,8 @@ export default function App() {
   // Results display: word-by-word verse vs. alphabetical letter breakdown
   const [resultsView, setResultsView] = useState('words')
   const [provider, setProvider] = useState(() => {
+    // Production testers only get OpenAI (Rules); the engine choice is dev-only
+    if (!import.meta.env.DEV) return 'openai-rules'
     const stored = localStorage.getItem('tanakh-provider')
     if (stored === 'gemini') return 'openai' // migrate prior local value
     return stored ?? 'azure'
@@ -739,43 +741,45 @@ export default function App() {
             </select>
           </div>
 
-          <div className="provider-selector">
-            <span className="provider-label">Engine</span>
-            <div className="provider-seg">
-              <button
-                className={`provider-btn ${provider === 'azure' ? 'provider-btn--active' : ''}`}
-                onClick={() => setProvider('azure')}
-                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
-                title="Azure Cognitive Services — Modern Israeli phoneme model"
-              >
-                Azure
-              </button>
-              <button
-                className={`provider-btn ${provider === 'openai' ? 'provider-btn--active' : ''}`}
-                onClick={() => setProvider('openai')}
-                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
-                title="OpenAI gpt-audio — LLM does transcription AND scoring"
-              >
-                OpenAI (LLM)
-              </button>
-              <button
-                className={`provider-btn ${provider === 'openai-rules' ? 'provider-btn--active' : ''}`}
-                onClick={() => setProvider('openai-rules')}
-                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
-                title="OpenAI transcription + deterministic rules engine for scoring"
-              >
-                OpenAI (Rules)
-              </button>
-              <button
-                className={`provider-btn ${provider === 'manual' ? 'provider-btn--active' : ''}`}
-                onClick={() => setProvider('manual')}
-                disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
-                title="Type phonetic transcription directly — tests the rules engine without OpenAI"
-              >
-                Manual
-              </button>
+          {import.meta.env.DEV && (
+            <div className="provider-selector">
+              <span className="provider-label">Engine</span>
+              <div className="provider-seg">
+                <button
+                  className={`provider-btn ${provider === 'azure' ? 'provider-btn--active' : ''}`}
+                  onClick={() => setProvider('azure')}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="Azure Cognitive Services — Modern Israeli phoneme model"
+                >
+                  Azure
+                </button>
+                <button
+                  className={`provider-btn ${provider === 'openai' ? 'provider-btn--active' : ''}`}
+                  onClick={() => setProvider('openai')}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="OpenAI gpt-audio — LLM does transcription AND scoring"
+                >
+                  OpenAI (LLM)
+                </button>
+                <button
+                  className={`provider-btn ${provider === 'openai-rules' ? 'provider-btn--active' : ''}`}
+                  onClick={() => setProvider('openai-rules')}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="OpenAI transcription + deterministic rules engine for scoring"
+                >
+                  OpenAI (Rules)
+                </button>
+                <button
+                  className={`provider-btn ${provider === 'manual' ? 'provider-btn--active' : ''}`}
+                  onClick={() => setProvider('manual')}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="Type phonetic transcription directly — tests the rules engine without OpenAI"
+                >
+                  Manual
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {(provider === 'openai' || provider === 'openai-rules' || provider === 'manual') && (
             <div className="settings-group">

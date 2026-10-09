@@ -10,6 +10,7 @@ import { transcribeAudio } from '../services/openaiRulesAssessment'
 import { assessManual } from '../services/manualAssessment'
 import { normalizeStudent, scoreWordAgainstTranscription } from '../utils/hebrewScoring'
 import { saveRecording, loadAllRecordings } from '../utils/recordingStore'
+import { waitForAudio } from '../utils/micReady'
 
 const RESULTS_KEY = 'tanakh-transcription-check-results'
 const RUN_ALL_CONCURRENCY = 3
@@ -106,11 +107,12 @@ export default function TranscriptionCheck() {
         saveRecording(item.id, blob).catch(e => setError(`Couldn't save recording: ${e.message}`))
         await transcribe(item, blob)
       }
-      // Wait for the recorder to really start, plus a short buffer, so the
-      // first syllable isn't clipped (same reason as the practice recorder).
+      // Wait for the recorder to start and the mic to deliver real audio, plus
+      // a short buffer, so the first syllable isn't clipped (same as practice).
       const started = new Promise(resolve => { recorder.onstart = resolve })
       recorder.start()
       await started
+      await waitForAudio(stream)
       await new Promise(resolve => setTimeout(resolve, 150))
       recorderRef.current = recorder
       setRecordingId(item.id)

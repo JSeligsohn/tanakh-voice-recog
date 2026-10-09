@@ -8,6 +8,8 @@ import { speakHebrew } from './services/tts'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
+import { waitForAudio } from './utils/micReady'
+import { checkRecording } from './utils/recordingCheck'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
 import ProgressView from './components/ProgressView'
@@ -231,6 +233,8 @@ export default function App() {
   const [currentPlayPhase, setCurrentPlayPhase] = useState('idle')
   const [currentRawSegments, setCurrentRawSegments] = useState([])
   const [showDebug, setShowDebug] = useState(false)
+  // Start-of-recording check for the current attempt (see utils/recordingCheck)
+  const [recordingCheck, setRecordingCheck] = useState(null)
   const [scoringMode, setScoringMode] = useState('default')
   // Results display: word-by-word verse vs. alphabetical letter breakdown
   const [resultsView, setResultsView] = useState('words')
@@ -262,6 +266,7 @@ export default function App() {
   const sharedStreamRef = useRef(null)
   const audioChunksRef = useRef([])
   const blobPromiseRef = useRef(null) // resolves with Blob (or null) when recorder stops
+  const micRef = useRef(null)         // mic name and start-up timings for the current recording
   const prepareTimerRef = useRef(null)
   const historyAudioRef = useRef(null)
   const currentAudioRef = useRef(null)
@@ -282,6 +287,7 @@ export default function App() {
   const displayWords = viewingHistoryEntry?.wordResults ?? wordResults
   const displayScores = viewingHistoryEntry?.scores ?? scores
   const displayRawSegments = viewingHistoryEntry?.rawSegments ?? currentRawSegments
+  const displayRecordingCheck = viewingHistoryEntry ? viewingHistoryEntry.recordingCheck : recordingCheck
 
   // Apply scoring mode curve to per-word and per-phoneme scores for rendering
   const curveScore = v => Math.round(Math.pow(Math.max(0, v) / 100, 0.65) * 100)
@@ -363,7 +369,9 @@ export default function App() {
     let resolveBlobPromise
     blobPromiseRef.current = new Promise(resolve => { resolveBlobPromise = resolve })
 
+    const t0 = performance.now()
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const tStream = performance.now()
     sharedStreamRef.current = stream
 
     const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
@@ -380,14 +388,30 @@ export default function App() {
       sharedStreamRef.current = null
     }
 
-    // Wait for the recorder to actually transition to "recording" state, then a
-    // brief buffer for the audio pipeline to start producing samples. Without this,
-    // the first ~100-300ms of speech can be lost depending on the browser.
+    // Wait for the recorder to actually transition to "recording" state, then
+    // for the mic to deliver real audio (see waitForAudio — Bluetooth mics can
+    // send silence for up to ~2s), plus a short buffer. Without this, the first
+    // word can be lost.
     const recordingStarted = new Promise(resolve => { recorder.onstart = () => resolve() })
     recorder.start(250)
     mediaRecorderRef.current = recorder
     await recordingStarted
-    await new Promise(resolve => setTimeout(resolve, 250))
+    const tStarted = performance.now()
+    const audio = await waitForAudio(stream)
+    await new Promise(resolve => setTimeout(resolve, 150))
+
+    const track = stream.getAudioTracks()[0]
+    micRef.current = {
+      mic: track?.label || 'microphone',
+      micOpenMs: Math.round(tStream - t0),
+      audioConfirmed: audio.ready,
+      readyAtMs: Math.round(performance.now() - tStarted), // cue shown, ms into the recording
+    }
+    console.log(
+      `[mic] ${track?.label || 'microphone'} │ stream ${Math.round(tStream - t0)}ms │ ` +
+      `recorder ${Math.round(tStarted - t0)}ms │ audio ${audio.ready ? `flowing after +${audio.ms}ms` : `not confirmed (${audio.reason})`} │ ` +
+      `ready at ${Math.round(performance.now() - t0)}ms`
+    )
 
     return stream
   }
@@ -410,7 +434,20 @@ export default function App() {
     audioChunksRef.current = []
   }
 
-  function addToHistory(words, scores, audioUrl, rawSegments) {
+  // Analyze how the recording starts; never fails the attempt if it can't.
+  async function runRecordingCheck(blob) {
+    if (!blob) return null
+    try {
+      const check = await checkRecording(blob, micRef.current ?? {})
+      console.log('[recording check]', check)
+      return check
+    } catch (err) {
+      console.warn('[recording check] failed:', err)
+      return null
+    }
+  }
+
+  function addToHistory(words, scores, audioUrl, rawSegments, check = null) {
     const entry = {
       id: Date.now(),
       timestamp: Date.now(),
@@ -421,6 +458,7 @@ export default function App() {
       audioUrl,
       rawSegments,
       settings: { tradition, shevaMode },
+      recordingCheck: check,
     }
     // Store up to 3 per verse; revoke dropped URL to free memory
     setHistory(prev => {
@@ -442,6 +480,7 @@ export default function App() {
     setErrorMsg('')
     setSelectedWordIdx(null)
     setCurrentRawSegments([])
+    setRecordingCheck(null)
 
     let stream
     try {
@@ -472,10 +511,12 @@ export default function App() {
       ({ words, scores }) => {
         clearTimeout(prepareTimerRef.current)
         const reconciled = reconcileWords(pasuk.text, words)
-        ;(blobPromiseRef.current ?? Promise.resolve(null)).then(blob => {
+        ;(blobPromiseRef.current ?? Promise.resolve(null)).then(async blob => {
           const audioUrl = blob ? URL.createObjectURL(blob) : null
           setCurrentAudioUrl(audioUrl)
-          addToHistory(reconciled, scores, audioUrl, segmentsRef)
+          const check = await runRecordingCheck(blob)
+          setRecordingCheck(check)
+          addToHistory(reconciled, scores, audioUrl, segmentsRef, check)
           if (window.innerWidth > 640) setShowHistory(true)
         })
         setPhase('done')
@@ -509,12 +550,15 @@ export default function App() {
     }
     try {
       const assess = useRulesEngine ? assessWithOpenAIRules : assessWithOpenAI
+      const checkPromise = runRecordingCheck(blob) // runs alongside the API call
       const { words, scores, rawSegment } = await assess(blob, pasuk.text, { tradition, shevaMode })
       const reconciled = reconcileWords(pasuk.text, words)
       const audioUrl = URL.createObjectURL(blob)
+      const check = await checkPromise
+      setRecordingCheck(check)
       setCurrentAudioUrl(audioUrl)
       setCurrentRawSegments([rawSegment])
-      addToHistory(reconciled, scores, audioUrl, [rawSegment])
+      addToHistory(reconciled, scores, audioUrl, [rawSegment], check)
       if (window.innerWidth > 640) setShowHistory(true)
       setPhase('done')
       setScores(scores)
@@ -563,6 +607,7 @@ export default function App() {
     setCurrentPlayPhase('idle')
     setCurrentAudioUrl(null)
     setCurrentRawSegments([])
+    setRecordingCheck(null)
     setPhase('idle')
     setWordResults([])
     setScores(null)
@@ -781,6 +826,13 @@ export default function App() {
           )}
 
           <div className="pasuk-card">
+            {(phase === 'done' || viewingHistoryEntry) && displayRecordingCheck?.cutOff && (
+              <p className="recording-warning">
+                The start of this recording may have been cut off — you were already speaking when the
+                microphone began picking up sound, so the first word may be missing or marked wrong.
+                Try again, and start reading once the red recording dot appears.
+              </p>
+            )}
             <div className="hebrew-text" dir="rtl" lang="he">
               {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0
                 ? modeWords.map((w, i) => (
@@ -1068,6 +1120,12 @@ export default function App() {
               </button>
               {showDebug && (
                 <div className="debug-body">
+                  {displayRecordingCheck && (
+                    <div className="debug-segment">
+                      <div className="debug-segment-label">Recording check</div>
+                      <pre className="debug-pre">{JSON.stringify(displayRecordingCheck, null, 2)}</pre>
+                    </div>
+                  )}
                   {displayRawSegments.map((seg, i) => (
                     <div key={i} className="debug-segment">
                       <div className="debug-segment-label">Segment {i + 1}</div>

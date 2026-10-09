@@ -5,6 +5,7 @@ import { assessWithOpenAI } from './services/openaiAssessment'
 import { assessWithOpenAIRules } from './services/openaiRulesAssessment'
 import { assessManual } from './services/manualAssessment'
 import { speakHebrew } from './services/tts'
+import { isSpeechAvailable } from './services/azureAuth'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
@@ -66,7 +67,7 @@ function WordChip({ word, score, errorType, isSelected, onClick, showScore }) {
   )
 }
 
-function PhonemePanel({ wordData, provider, onClose }) {
+function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
   const { word, score, errorType, phonemes, phoneticHeard } = wordData
   const color = scoreColor(score, errorType)
   const groups = splitHebrewToGroups(word)
@@ -106,14 +107,16 @@ function PhonemePanel({ wordData, provider, onClose }) {
         <span className="phoneme-panel-badge" style={{ background: color }}>
           {Math.round(score)}/100 — {scoreLabel(score, errorType)}
         </span>
-        <button
-          className={`btn-listen btn-word-listen ${isPlaying ? 'btn-listen--active' : ''}`}
-          onClick={handleListen}
-          title={isPlaying ? 'Stop' : 'Hear Azure pronounce this word'}
-        >
-          <span className="listen-icon">{isPlaying ? '■' : '▶'}</span>
-          {isPlaying ? 'Stop' : 'Listen'}
-        </button>
+        {speechAvailable && (
+          <button
+            className={`btn-listen btn-word-listen ${isPlaying ? 'btn-listen--active' : ''}`}
+            onClick={handleListen}
+            title={isPlaying ? 'Stop' : 'Hear Azure pronounce this word'}
+          >
+            <span className="listen-icon">{isPlaying ? '■' : '▶'}</span>
+            {isPlaying ? 'Stop' : 'Listen'}
+          </button>
+        )}
         <span className="phoneme-panel-word" dir="rtl" lang="he">{word}</span>
         <button className="phoneme-panel-close" onClick={() => { cancelRef.current?.(); onClose() }} aria-label="Close">✕</button>
       </div>
@@ -146,7 +149,7 @@ function PhonemePanel({ wordData, provider, onClose }) {
           </div>
           {errorType === 'Omission' ? (
             <p className="phoneme-note">
-              Word not detected in your recording — press Listen to hear how it should sound.
+              Word not detected in your recording{speechAvailable ? ' — press Listen to hear how it should sound' : ''}.
             </p>
           ) : !isPerfect && provider === 'azure' ? (
             <p className="phoneme-note">
@@ -223,6 +226,9 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('')
   const [selectedWordIdx, setSelectedWordIdx] = useState(null)
   const [listenPhase, setListenPhase] = useState('idle')
+  // Listen (Azure text-to-speech) is shown only when Azure is set up on the server
+  const [speechAvailable, setSpeechAvailable] = useState(false)
+  useEffect(() => { isSpeechAvailable().then(setSpeechAvailable) }, [])
   const [history, setHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('tanakh-history') ?? '[]') } catch { return [] }
   })
@@ -926,16 +932,18 @@ export default function App() {
             <div className="pasuk-meta">
               <div className="pasuk-meta-top">
                 <span className="pasuk-ref">{pasuk.reference}</span>
-                <button
-                  className={`btn-listen ${listenPhase !== 'idle' ? 'btn-listen--active' : ''}`}
-                  onClick={handleListen}
-                  disabled={phase === 'recording' || phase === 'processing'}
-                  title={listenPhase === 'idle' ? 'Hear Azure read this verse' : 'Stop'}
-                >
-                  {listenPhase === 'playing' && <span className="listen-icon">■</span>}
-                  {listenPhase === 'idle'    && <span className="listen-icon">▶</span>}
-                  {listenPhase === 'playing' ? 'Stop' : 'Listen'}
-                </button>
+                {speechAvailable && (
+                  <button
+                    className={`btn-listen ${listenPhase !== 'idle' ? 'btn-listen--active' : ''}`}
+                    onClick={handleListen}
+                    disabled={phase === 'recording' || phase === 'processing'}
+                    title={listenPhase === 'idle' ? 'Hear Azure read this verse' : 'Stop'}
+                  >
+                    {listenPhase === 'playing' && <span className="listen-icon">■</span>}
+                    {listenPhase === 'idle'    && <span className="listen-icon">▶</span>}
+                    {listenPhase === 'playing' ? 'Stop' : 'Listen'}
+                  </button>
+                )}
               </div>
               <span className="pasuk-translation">{pasuk.translation}</span>
             </div>
@@ -946,6 +954,7 @@ export default function App() {
               wordData={modeWords[selectedWordIdx]}
               provider={displayRawSegments[0]?.provider ?? 'azure'}
               onClose={() => setSelectedWordIdx(null)}
+              speechAvailable={speechAvailable}
             />
           )}
 

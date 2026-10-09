@@ -8,75 +8,14 @@
 
 import { scoreWords } from '../utils/hebrewScoring.js'
 import { alignByDP, tokenizePhonetic, applyAlignmentNotes } from '../utils/phoneticAlignment.js'
-
-const MODEL = 'gpt-audio-1.5'
-
-const TRANSCRIPTION_PROMPT = `You are a phonetic transcription assistant for Hebrew. Listen to the audio of someone reading a Hebrew verse aloud and transcribe what you hear phonetically into Latin letters.
-
-CRITICAL RULES:
-- Transcribe what was actually HEARD, not what the word "should" sound like.
-- Do NOT auto-correct mispronunciations. If the student says "yishrael" for ישראל, write "yishrael" — NOT "yisrael". If they say "hazot" for הַזֹּאת, write "hazot" — NOT "hazos". Resist the urge to normalize.
-- Use spaces between words as you heard them. If the student blurred two words, still try to separate them at the natural word boundary.
-- If a word or section is missing because the student skipped it or stopped early, just leave it out of the transcription — do NOT invent words you didn't actually hear.
-- Use simple Latin letters only. Use "sh" for shin, "s" for sin, "ch" for guttural ח/כ, "ts" for tzadi. Use single vowels (a, e, i, o, u) or common digraphs (ay, oy, ey).
-- The reference text is ONLY for finding word boundaries. Never copy a word's usual English spelling from it.
-
-VOWELS — transcribe vowel sounds as carefully as consonants. Readers use different traditions: Modern/Sephardic ("baruch", "shalom", "amen") or Ashkenazic ("boruch", "sholom", "omayn" — kamatz as "aw", tzere as "ay", cholam as "oy"). Write what THIS reader actually said, choosing the letter by the sound:
-- "a" — only an open, unrounded "ah", as in "father".
-- "o" — any rounded vowel: "oh" as in "go" AND "aw" as in "law" or "thought". If the lips round at all, write "o", even when the word is usually spelled with "a". Example: בָּרוּךְ said "baw-rookh" → "boruch", NOT "baruch". שָׁלוֹם said "shaw-lohm" → "sholom", NOT "shalom".
-- "e" — "eh" as in "bed". "ay" — "ay" as in "day" (אָמֵן said "aw-mayn" → "omayn").
-- "i" — "ee" as in "see". "u" — "oo" as in "food". "oy" — "oy" as in "boy".
-- The reverse applies too: if the reader clearly says "ah" for a vowel that is often "aw" in Ashkenazic, write "a".
-
-Output ONLY valid JSON in this exact format (no markdown, no preamble):
-{
-  "transcription": "phonetic transcription of the recording, words separated by spaces"
-}`
+import { callOpenAIAudio } from './openaiProxy.js'
 
 // Audio → phonetic transcription only, with the production prompt. Shared by
 // assessment and the dev Transcription check page, so the check measures
 // exactly what students get. Returns { transcription, model, usage, cost }.
 export async function transcribeAudio(audioBlob, referenceText) {
-  const key = import.meta.env.VITE_OPENAI_API_KEY
-  if (!key) throw new Error('OpenAI API key not configured. Set VITE_OPENAI_API_KEY in your environment.')
-
-  const wavBlob = await blobToWav(audioBlob)
-  const base64 = await blobToBase64(wavBlob)
-
-  const userMessage = `Reference text (one word per whitespace-separated token; treat maqef-joined sequences as a single token):\n${referenceText}\n\nThe student's recording is attached.`
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      modalities: ['text'],
-      messages: [
-        { role: 'system', content: TRANSCRIPTION_PROMPT },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: userMessage },
-            { type: 'input_audio', input_audio: { data: base64, format: 'wav' } },
-          ],
-        },
-      ],
-      temperature: 0.1,
-    }),
-  })
-
-  if (!response.ok) {
-    const errText = await response.text()
-    throw new Error(`OpenAI API error (${response.status}): ${errText}`)
-  }
-
-  const data = await response.json()
-  const cost = logUsage(data.usage)
-  const content = data.choices?.[0]?.message?.content
-  if (!content) throw new Error('OpenAI returned no content. Full response: ' + JSON.stringify(data).slice(0, 300))
+  const { content, model, usage } = await callOpenAIAudio('transcribe', audioBlob, referenceText)
+  const cost = logUsage(usage)
 
   const jsonStart = content.indexOf('{')
   const jsonEnd = content.lastIndexOf('}')
@@ -89,7 +28,7 @@ export async function transcribeAudio(audioBlob, referenceText) {
   try { parsed = JSON.parse(cleaned) }
   catch { throw new Error('OpenAI returned malformed JSON: ' + cleaned.slice(0, 200)) }
 
-  return { transcription: parsed.transcription ?? '', model: data.model ?? MODEL, usage: data.usage, cost }
+  return { transcription: parsed.transcription ?? '', model, usage, cost }
 }
 
 export async function assessWithOpenAIRules(audioBlob, referenceText, settings = {}) {
@@ -155,61 +94,6 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
   return { words, scores, rawSegment }
 }
 
-// ── Audio conversion helpers (duplicated from openaiAssessment.js for isolation) ──
-
-async function blobToWav(blob) {
-  const arrayBuffer = await blob.arrayBuffer()
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
-  audioCtx.close()
-  return encodeWav(audioBuffer)
-}
-
-function encodeWav(audioBuffer) {
-  const numChannels = 1
-  const sampleRate = audioBuffer.sampleRate
-  const samples = audioBuffer.getChannelData(0)
-  const dataSize = samples.length * 2
-
-  const buffer = new ArrayBuffer(44 + dataSize)
-  const view = new DataView(buffer)
-
-  writeString(view, 0, 'RIFF')
-  view.setUint32(4, 36 + dataSize, true)
-  writeString(view, 8, 'WAVE')
-  writeString(view, 12, 'fmt ')
-  view.setUint32(16, 16, true)
-  view.setUint16(20, 1, true)
-  view.setUint16(22, numChannels, true)
-  view.setUint32(24, sampleRate, true)
-  view.setUint32(28, sampleRate * numChannels * 2, true)
-  view.setUint16(32, numChannels * 2, true)
-  view.setUint16(34, 16, true)
-  writeString(view, 36, 'data')
-  view.setUint32(40, dataSize, true)
-
-  let offset = 44
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]))
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
-    offset += 2
-  }
-
-  return new Blob([buffer], { type: 'audio/wav' })
-}
-
-function writeString(view, offset, str) {
-  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
-}
-
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result.split(',')[1])
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
-}
 
 const PRICE_PER_M = {
   textInput: 2.50,

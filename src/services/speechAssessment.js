@@ -1,4 +1,5 @@
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk'
+import { getSpeechConfig } from './azureAuth'
 
 // Wire a MediaStream into an Azure PushAudioInputStream so both the MediaRecorder
 // and Azure share one physical mic connection. Returns { audioConfig, cleanup }.
@@ -48,11 +49,25 @@ function createAudioConfigFromStream(stream) {
   return { audioConfig: SpeechSDK.AudioConfig.fromStreamInput(pushStream), cleanup }
 }
 
+// Starts once the speech token arrives. The returned stop/cancel can be called
+// at any time: a stop or cancel before setup finishes is applied when it does.
 export function startPronunciationAssessment(referenceText, onResult, onError, onReady, stream, onSegment) {
-  const key = import.meta.env.VITE_AZURE_SPEECH_KEY
-  const region = import.meta.env.VITE_AZURE_SPEECH_REGION
+  let session = null
+  let pending = null // 'stop' | 'cancel' requested before the session existed
 
-  const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(key, region)
+  getSpeechConfig().then(speechConfig => {
+    if (pending === 'cancel') return
+    session = startSession(speechConfig, referenceText, onResult, onError, onReady, stream, onSegment)
+    if (pending === 'stop') session.stop()
+  }).catch(err => { if (pending !== 'cancel') onError(err.message) })
+
+  return {
+    stop() { if (session) session.stop(); else pending = 'stop' },
+    cancel() { if (session) session.cancel(); else pending = 'cancel' },
+  }
+}
+
+function startSession(speechConfig, referenceText, onResult, onError, onReady, stream, onSegment) {
   speechConfig.speechRecognitionLanguage = 'he-IL'
 
   const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(

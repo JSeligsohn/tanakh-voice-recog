@@ -129,6 +129,14 @@ function mergeVowelCarriers(atoms) {
       continue
     }
 
+    // ָיו suffix ("his"): the yud is silent and the vav is "v" — אֵלָיו "elav",
+    // יָדָיו "yadav" (not "elayv")
+    const next = atoms[i + 1]
+    if (a.letter === 'י' && !a.vowel && !a.dagesh && prev?.vowel === 'qamats' &&
+        next?.letter === 'ו' && !next.vowel && !next.dagesh && i + 1 === atoms.length - 1) {
+      continue
+    }
+
     out.push(a)
   }
 
@@ -165,8 +173,10 @@ export function determineShevaType(atoms, index) {
     if (qType === 'ambiguous') return 'either'
   }
 
-  // S2: after a long vowel
-  if (LONG_VOWELS.has(prev?.vowel)) return 'na'
+  // S2: after a long vowel. Strictly vocal (וּבְנֵי "uvenei"), but most readers
+  // say it silent ("uvnei"), so accept either — unless a meteg marks the long
+  // vowel, which settles it as vocal.
+  if (LONG_VOWELS.has(prev?.vowel)) return prev.meteg ? 'na' : 'either'
 
   // S3 (default): after short vowel in middle = nach
   return 'nach'
@@ -183,12 +193,26 @@ export function getExpectedPhonetic(atoms, { tradition = 'sephardic', shevaMode 
     const consonant = consonantSound(atom, atoms, i, tradition)
     // altVowels: other readings accepted without penalty (lenient grading)
     const { vowel, shevaType, qamatsType = null, altVowels = [] } = vowelSound(atom, atoms, i, tradition, shevaMode)
-    const seg = { atomIndex: i, atom, consonant, vowel, shevaType, qamatsType, altVowels }
+    // altConsonants: other consonant readings accepted without penalty
+    const altConsonants = isDivineNameHe(atoms, i) ? ['k'] : []
+    const seg = { atomIndex: i, atom, consonant, vowel, shevaType, qamatsType, altVowels, altConsonants }
     // Patach genuvah: the "a" is sounded before the final guttural (רוּחַ "ruach")
     if (isPatachGenuvah(atom)) return { ...seg, patachGenuvah: true, sound: vowel + consonant }
     return { ...seg, sound: consonant + vowel }
   })
   return { segments, fullPhonetic: segments.map(s => s.sound).join('') }
+}
+
+// The ה of אֱלֹהִים and its forms (אֱלֹהֵינוּ, אֱלֹהֶיךָ, לֵאלֹהִים, ...): readers
+// customarily say "k" outside prayer ("Elokeinu"), and either is accepted.
+// Pattern: א, then ל with holam, then this ה, with at most two prefix letters
+// before the א in its maqef component.
+function isDivineNameHe(atoms, index) {
+  const he = atoms[index], lamed = atoms[index - 1], alef = atoms[index - 2]
+  if (he.letter !== 'ה' || lamed?.letter !== 'ל' || lamed.vowel !== 'holam' || alef?.letter !== 'א') return false
+  let start = index - 2
+  while (start > 0 && !atoms[start].wordStart) start--
+  return index - 2 - start <= 2
 }
 
 // Patach under a word-final ח, ע, or הּ (with mappiq) is a "stolen" patach: it

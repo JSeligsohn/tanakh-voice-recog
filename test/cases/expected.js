@@ -34,6 +34,10 @@ export const expectedCases = [
   { word: 'וּמִבֵּית', seph: 'umibet', rule: 'standalone shuruk; tzere malei' },
   { word: 'רוּחַ', seph: 'ruach', rule: 'shuruk on a vav' },
   { word: 'וַיֹּאמֶר', seph: 'vayomer', rule: 'consonantal vav and yud; silent alef' },
+  { word: 'אֵלָיו', seph: 'elav', ashk: 'elov', rule: 'ָיו suffix: yud silent, vav = v' },
+  { word: 'יָדָיו', seph: 'yadav', rule: 'ָיו suffix: yud silent, vav = v' },
+  { word: 'חַיָּיו', seph: 'chayav', rule: 'ָיו suffix after a consonantal yud' },
+  { word: 'עָלָיו', seph: 'alav', rule: 'ָיו suffix' },
 
   // ── Sheva ──────────────────────────────────────────────────────────
   { word: 'בְּרֵאשִׁית', seph: 'bereshit', ashk: 'bereshis', rule: 'S1 sheva na at word start' },
@@ -44,8 +48,7 @@ export const expectedCases = [
   { word: 'הַלְלוּ', seph: 'halelu', rule: 'S4 identical letters' },
   { word: 'לֶךְ־לְךָ', seph: 'lechlecha', rule: 'S5 nach at maqef end; S1 na after maqef' },
   { word: 'אֶת־בְּנוֹ', seph: 'etbeno', rule: 'S1 na at the start of a maqef component' },
-  { word: 'שׁוֹמְרִים', seph: 'shomerim', rule: 'S2 sheva na after a long vowel',
-    review: 'Tiberian rule says na ("shomerim"); modern readers say "shomrim"' },
+  { word: 'שׁוֹמְרִים', seph: 'shomerim', rule: 'S2 sheva after a long vowel: shown vocal, silent also accepted' },
   { word: 'הַמְּלָכִים', seph: 'hamelachim', rule: 'sheva under a dagesh chazak is na',
     todo: 'no rule yet for sheva under dagesh chazak — engine gives "hamlachim"' },
 
@@ -83,7 +86,8 @@ export const shevaTypeCases = [
   { word: 'וַיִּשְׁמְרוּ', types: ['nach', 'na'], rule: 'S6' },
   { word: 'הִנְנִי', types: ['na'], rule: 'S4' },
   { word: 'יִשְׂרָאֵל', types: ['nach'], rule: 'S3' },
-  { word: 'שׁוֹמְרִים', types: ['na'], rule: 'S2' },
+  { word: 'שׁוֹמְרִים', types: ['either'], rule: 'S2 (no meteg): either' },
+  { word: 'שֽׁוֹמְרִים', types: ['na'], rule: 'S2 with meteg: na' },
   { word: 'לֶךְ־לְךָ', types: ['nach', 'na'], rule: 'S5/S1 across maqef' },
   { word: 'חָכְמָה', types: ['nach'], rule: 'after qamats katan' },
   { word: 'שָׁמְרוּ', types: ['either'], rule: 'after ambiguous qamats' },

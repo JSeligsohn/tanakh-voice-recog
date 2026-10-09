@@ -74,18 +74,20 @@ function buildSyllables(atoms, segments) {
       const nextAtom = a.isFinal ? null : atoms[seg.atomIndex + 1]
       const vVariants = vowelVariants({ ...seg, nextAtom })
       const c = seg.consonant ?? ''
+      const consonants = [c, ...(seg.altConsonants ?? [])]
       return {
         atomIndex: seg.atomIndex,
         atom: a,
         display,
         expected: seg.sound,
         consonant: seg.consonant,
+        altConsonants: seg.altConsonants ?? [],
         vowel: seg.vowel,
         shevaType: seg.shevaType,
         qamatsType: seg.qamatsType,
         patachGenuvah: !!seg.patachGenuvah,
         vowelVariants: vVariants,
-        variants: vVariants.map(v => seg.patachGenuvah ? v + c : c + v),
+        variants: consonants.flatMap(k => vVariants.map(v => seg.patachGenuvah ? v + k : k + v)),
       }
     })
 }
@@ -315,7 +317,9 @@ function alignSyllables(syllables, studentPhonetic) {
 
     // -- Consonant phase --
     if (syl.consonant) {
-      let cMatch = matchAnyVariant(remaining, syl.consonant)
+      const consonantOptions = [syl.consonant, ...(syl.altConsonants ?? [])]
+      let cMatch = null
+      for (const k of consonantOptions) { cMatch = matchAnyVariant(remaining, k); if (cMatch) break }
 
       // Soft-match fallback: cleanMatch refuses to match "t" when followed by
       // "s"/"z" (would form ts/tz digraph), and similarly for sh/ch/kh. But if
@@ -347,7 +351,7 @@ function alignSyllables(syllables, studentPhonetic) {
         // still credit the syllable's consonant as matched.
         let skip = 0, laterMatch = null
         for (let k = 1; k <= 4 && k < remaining.length; k++) {
-          const m = matchAnyVariant(remaining.slice(k), syl.consonant)
+          const m = consonantOptions.map(opt => matchAnyVariant(remaining.slice(k), opt)).find(Boolean)
           if (m) { skip = k; laterMatch = m; break }
         }
         if (laterMatch) {

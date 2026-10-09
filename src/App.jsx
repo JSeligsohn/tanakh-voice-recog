@@ -175,22 +175,6 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
   )
 }
 
-const SCORING_MODES = [
-  { value: 'default',    label: 'Default',    note: 'Azure standard — Overall includes fluency and completeness.' },
-  { value: 'no-fluency', label: 'No Fluency', note: 'Overall = Accuracy (75%) + Completeness (25%). Fluency excluded.' },
-  { value: 'curved',     label: 'Curved',     note: 'Accuracy-only scoring with a gentle curve — more lenient for natural reading variation.' },
-]
-
-function applyScoringMode(scores, mode) {
-  if (!scores) return null
-  if (mode === 'default') return scores
-  const overall = scores.accuracy * 0.75 + scores.completeness * 0.25
-  if (mode === 'no-fluency') return { ...scores, pronunciation: Math.round(overall) }
-  // curved: power curve maps ~60→74, ~70→82, ~80→89, ~90→95
-  const curve = v => Math.round(Math.pow(Math.max(0, v) / 100, 0.65) * 100)
-  return { ...scores, pronunciation: curve(overall), accuracy: curve(scores.accuracy) }
-}
-
 function ScoreRing({ value, label }) {
   const radius = 28
   const circumference = 2 * Math.PI * radius
@@ -241,7 +225,6 @@ export default function App() {
   const [showDebug, setShowDebug] = useState(false)
   // Start-of-recording check for the current attempt (see utils/recordingCheck)
   const [recordingCheck, setRecordingCheck] = useState(null)
-  const [scoringMode, setScoringMode] = useState('default')
   // Results display: word-by-word verse vs. alphabetical letter breakdown
   const [resultsView, setResultsView] = useState('words')
   const [provider, setProvider] = useState(() => {
@@ -297,15 +280,6 @@ export default function App() {
   const displayRawSegments = viewingHistoryEntry?.rawSegments ?? currentRawSegments
   const displayRecordingCheck = viewingHistoryEntry ? viewingHistoryEntry.recordingCheck : recordingCheck
 
-  // Apply scoring mode curve to per-word and per-phoneme scores for rendering
-  const curveScore = v => Math.round(Math.pow(Math.max(0, v) / 100, 0.65) * 100)
-  const modeWords = scoringMode === 'curved'
-    ? displayWords.map(w => ({
-        ...w,
-        score: w.errorType === 'Omission' ? w.score : curveScore(w.score),
-        phonemes: w.phonemes.map(p => ({ ...p, accuracyScore: curveScore(p.accuracyScore) })),
-      }))
-    : displayWords
   const viewingAttemptNumber = viewingHistoryEntry
     ? verseHistory.length - verseHistory.findIndex(e => e.id === viewingHistoryEntry.id)
     : null
@@ -844,8 +818,8 @@ export default function App() {
               </p>
             )}
             <div className="hebrew-text" dir="rtl" lang="he">
-              {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0
-                ? modeWords.map((w, i) => (
+              {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0
+                ? displayWords.map((w, i) => (
                     <span key={i}>
                       <WordChip
                         {...w}
@@ -853,14 +827,14 @@ export default function App() {
                         onClick={() => handleWordClick(i)}
                         showScore
                       />
-                      {i < modeWords.length - 1 ? ' ' : null}
+                      {i < displayWords.length - 1 ? ' ' : null}
                     </span>
                   ))
                 // Word joiner after each maqef so a joined phrase never wraps mid-way
                 : <span>{pasuk.text.replaceAll('־', '־\u2060')}</span>
               }
             </div>
-            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && (
+            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && (
               <div className="results-view-toggle">
                 <button
                   className={`results-view-btn ${resultsView === 'words' ? 'results-view-btn--active' : ''}`}
@@ -876,11 +850,11 @@ export default function App() {
                 </button>
               </div>
             )}
-            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && resultsView === 'letters' && (
-              <LetterBreakdown wordResults={modeWords} />
+            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && resultsView === 'letters' && (
+              <LetterBreakdown wordResults={displayWords} />
             )}
-            {(phase === 'done' || viewingHistoryEntry) && modeWords.length > 0 && resultsView === 'words' && (() => {
-              const issues = modeWords
+            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && resultsView === 'words' && (() => {
+              const issues = displayWords
                 .map((w, idx) => ({ word: w, idx }))
                 .filter(({ word }) => word.errorType !== 'None' || word.phonemes?.some(p => p.note))
               if (issues.length === 0) {
@@ -949,9 +923,9 @@ export default function App() {
             </div>
           </div>
 
-          {selectedWordIdx !== null && modeWords[selectedWordIdx] && (
+          {selectedWordIdx !== null && displayWords[selectedWordIdx] && (
             <PhonemePanel
-              wordData={modeWords[selectedWordIdx]}
+              wordData={displayWords[selectedWordIdx]}
               provider={displayRawSegments[0]?.provider ?? 'azure'}
               onClose={() => setSelectedWordIdx(null)}
               speechAvailable={speechAvailable}
@@ -1074,36 +1048,26 @@ export default function App() {
 
           {displayScores && (
             <div className="score-panel">
-              <div className="scoring-mode-selector">
-                <span className="scoring-mode-label">Scoring</span>
-                <div className="scoring-mode-seg">
-                  {SCORING_MODES.map(m => (
-                    <button
-                      key={m.value}
-                      className={`scoring-mode-btn ${scoringMode === m.value ? 'scoring-mode-btn--active' : ''}`}
-                      onClick={() => setScoringMode(m.value)}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="score-rings">
-                {(() => {
-                  const s = applyScoringMode(displayScores, scoringMode)
-                  return (
-                    <>
-                      <ScoreRing value={s.pronunciation} label="Overall" />
-                      <ScoreRing value={s.accuracy} label="Accuracy" />
-                      {scoringMode === 'default' && <ScoreRing value={s.fluency} label="Fluency" />}
-                      <ScoreRing value={s.completeness} label="Complete" />
-                    </>
-                  )
-                })()}
-              </div>
-              <p className="score-note">
-                {SCORING_MODES.find(m => m.value === scoringMode).note}
-              </p>
+              {(() => {
+                // Fluency is only measured by Azure; the other engines have no
+                // fluency signal of their own, so the circle is shown for Azure only.
+                const isAzure = (displayRawSegments[0]?.provider ?? 'azure') === 'azure'
+                return (
+                  <>
+                    <div className="score-rings">
+                      <ScoreRing value={displayScores.pronunciation} label="Overall" />
+                      <ScoreRing value={displayScores.accuracy} label="Accuracy" />
+                      {isAzure && <ScoreRing value={displayScores.fluency} label="Fluency" />}
+                      <ScoreRing value={displayScores.completeness} label="Complete" />
+                    </div>
+                    <p className="score-note">
+                      {isAzure
+                        ? 'Scored by Azure: Overall combines accuracy, fluency and completeness.'
+                        : 'Overall = Accuracy (75%) + Completeness (25%).'}
+                    </p>
+                  </>
+                )
+              })()}
 
               {displayRawSegments[0]?.feedback && (
                 <div className="feedback-banner">

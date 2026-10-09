@@ -33,7 +33,10 @@ Output ONLY valid JSON in this exact format (no markdown, no preamble):
   "transcription": "phonetic transcription of the recording, words separated by spaces"
 }`
 
-export async function assessWithOpenAIRules(audioBlob, referenceText, settings = {}) {
+// Audio → phonetic transcription only, with the production prompt. Shared by
+// assessment and the dev Transcription check page, so the check measures
+// exactly what students get. Returns { transcription, model, usage, cost }.
+export async function transcribeAudio(audioBlob, referenceText) {
   const key = import.meta.env.VITE_OPENAI_API_KEY
   if (!key) throw new Error('OpenAI API key not configured. Set VITE_OPENAI_API_KEY in your environment.')
 
@@ -71,7 +74,7 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
   }
 
   const data = await response.json()
-  logUsage(data.usage)
+  const cost = logUsage(data.usage)
   const content = data.choices?.[0]?.message?.content
   if (!content) throw new Error('OpenAI returned no content. Full response: ' + JSON.stringify(data).slice(0, 300))
 
@@ -86,11 +89,17 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
   try { parsed = JSON.parse(cleaned) }
   catch { throw new Error('OpenAI returned malformed JSON: ' + cleaned.slice(0, 200)) }
 
+  return { transcription: parsed.transcription ?? '', model: data.model ?? MODEL, usage: data.usage, cost }
+}
+
+export async function assessWithOpenAIRules(audioBlob, referenceText, settings = {}) {
+  const { transcription, model, usage } = await transcribeAudio(audioBlob, referenceText)
+
   const referenceWords = referenceText.split(/\s+/).filter(Boolean)
 
   // Tokenize the model's transcription, then let DP alignment figure out which
   // tokens correspond to which reference words.
-  const flatTokens = tokenizePhonetic(parsed.transcription ?? '')
+  const flatTokens = tokenizePhonetic(transcription)
   const alignment = flatTokens.length > 0
     ? alignByDP(referenceWords, flatTokens, settings)
     : { heardByRef: referenceWords.map(() => '') }
@@ -133,10 +142,10 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
 
   const rawSegment = {
     provider: 'openai-rules',
-    model: data.model ?? MODEL,
-    transcription: parsed.transcription,
+    model,
+    transcription,
     feedback,
-    usage: data.usage,
+    usage,
     settings,
     perWordHeard: heardByRef,
     expectedPhonetic: scored.map(w => ({ word: w.word, expected: w.expectedPhonetic, heard: w.phoneticHeard })),
@@ -209,8 +218,9 @@ const PRICE_PER_M = {
   textOutput: 10.00,
 }
 
+// Logs token usage and returns the estimated cost in dollars (0 if unknown).
 function logUsage(usage) {
-  if (!usage) return
+  if (!usage) return 0
   const promptDetails = usage.prompt_tokens_details ?? {}
   const cached = promptDetails.cached_tokens ?? 0
   const audio = promptDetails.audio_tokens ?? 0
@@ -227,4 +237,5 @@ function logUsage(usage) {
   console.log(
     `[openai+rules usage] text: ${text} (${cached} cached) │ audio in: ${audio} │ output: ${output} │ ≈ $${cost.toFixed(4)}`
   )
+  return cost
 }

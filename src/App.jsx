@@ -7,6 +7,7 @@ import { assessManual } from './services/manualAssessment'
 import { speakHebrew } from './services/tts'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
+import TranscriptionCheck from './components/TranscriptionCheck'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
 import ProgressView from './components/ProgressView'
@@ -623,6 +624,14 @@ export default function App() {
             >
               Progress
             </button>
+            {import.meta.env.DEV && (
+              <button
+                className={`main-nav-tab ${activeTab === 'transcription' ? 'main-nav-tab--active' : ''}`}
+                onClick={() => setActiveTab('transcription')}
+              >
+                Transcription check
+              </button>
+            )}
           </div>
           <div className="dev-role-toggle">
             <span className="dev-role-label">[dev]</span>
@@ -640,6 +649,12 @@ export default function App() {
             </button>
           </div>
         </nav>
+
+        {import.meta.env.DEV && activeTab === 'transcription' && (
+          <main className="app-main">
+            <TranscriptionCheck />
+          </main>
+        )}
 
         {activeTab === 'progress' && (
           <main className="app-main">

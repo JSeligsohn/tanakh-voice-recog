@@ -99,7 +99,7 @@ function buildSyllables(atoms, segments) {
 //   j            → y    (German/academic "Jisrael" — Hebrew has no "j" sound)
 //   w + vowel    → v    (academic "wayomer" for vav)
 // Apostrophes for alef/ayin ("'esav") are dropped with the other punctuation.
-function normalizeStudent(phonetic) {
+export function normalizeStudent(phonetic) {
   return (phonetic ?? '')
     .toLowerCase()
     .replace(/[^a-z\s]/g, '')

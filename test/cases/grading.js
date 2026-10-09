@@ -43,6 +43,13 @@ export const gradingCases = [
   { word: 'שָׁמְרוּ', heard: 'shomru', pass: true, rule: 'QK1 ambiguous: katan accepted' },
   { word: 'אָמֵן', heard: 'omein', trad: 'ashkenazic', pass: true, rule: 'Ashkenazic tzere "ei"' },
   { word: 'שָׁלוֹם', heard: 'sholoym', trad: 'ashkenazic', pass: true, rule: 'Ashkenazic holam "oy"' },
+  { word: 'בָּרוּךְ', heard: 'boruch', trad: 'ashkenazic', pass: true, rule: 'Ashkenazic kamatz "o"' },
+  { word: 'בָּרוּךְ', heard: 'bawruch', trad: 'ashkenazic', pass: true, rule: 'Ashkenazic kamatz "aw"' },
+  { word: 'בָּרוּךְ', heard: 'baruch', trad: 'ashkenazic', pass: true, rule: 'lenient: Ashkenazic kamatz heard as "a"' },
+  { word: 'בָּרוּךְ', heard: 'buruch', trad: 'ashkenazic', pass: true, rule: 'lenient: Ashkenazic kamatz heard as "u"' },
+  { word: 'בָּרוּךְ', heard: 'buhruch', trad: 'ashkenazic', pass: true, rule: 'lenient: Ashkenazic kamatz heard as "uh"' },
+  { word: 'שָׁלוֹם', heard: 'shalom', trad: 'ashkenazic', pass: true, rule: 'lenient: Ashkenazic kamatz heard as "a"' },
+  { word: 'הָאָרֶץ', heard: 'haarets', trad: 'ashkenazic', pass: true, rule: 'repeated "a" belongs to the next kamatz, not elongation' },
 
   // ── Errors that must be flagged ────────────────────────────────────
   { word: 'הַשֵּׁם', heard: 'hasem', flag: 'shin', rule: 'shin read as sin' },
@@ -55,6 +62,8 @@ export const gradingCases = [
   { word: 'רוּחַ', heard: 'rucha', flag: 'Patach genuvah', rule: 'patach genuvah read after the letter' },
   { word: 'רוּחַ', heard: 'ruch', flag: 'Patach genuvah', rule: 'patach genuvah dropped' },
   { word: 'שָׁלוֹם', heard: 'sholom', flag: 'Vowel mismatch', rule: 'Sephardic qamats gadol read as o' },
+  { word: 'אַתָּה', heard: 'otoh', trad: 'ashkenazic', flag: 'Vowel mismatch', rule: 'Ashkenazic patach read as o (only kamatz is lenient)' },
+  { word: 'בָּרוּךְ', heard: 'biruch', trad: 'ashkenazic', flag: 'Vowel mismatch', rule: 'Ashkenazic kamatz read as "i"' },
   { word: 'שְׁמֶךָ', heard: 'shmecha', flag: 'Sheva na', rule: 'sheva na dropped' },
   { word: 'בְּרֵאשִׁית', heard: 'bireshit', flag: 'Sheva na', rule: 'sheva na heard as "i"' },
   { word: 'הִנְנִי', heard: 'hinni', flag: 'Sheva na', rule: 'S4 sheva na dropped' },

@@ -366,9 +366,11 @@ function vowelSound(atom, atoms, index, tradition, shevaMode) {
   // Qamats katan is "o" in every tradition. In Sephardic, where gadol is "a",
   // we're lenient: katan read as "a" is accepted, and an ambiguous qamats
   // (QK1) accepts either.
+  // Ashkenazic kamatz is "o"/"aw" canonically, but readers vary — "boruch",
+  // "baruch", "buruch" are all heard and all valid — so any of them passes.
   if (v === 'qamats') {
     const qamatsType = determineQamatsType(atoms, index)
-    if (tradition === 'ashkenazic') return { vowel: 'o', shevaType: null, qamatsType }
+    if (tradition === 'ashkenazic') return { vowel: 'o', shevaType: null, qamatsType, altVowels: ['a', 'u'] }
     if (qamatsType === 'katan') return { vowel: 'o', shevaType: null, qamatsType, altVowels: ['a'] }
     if (qamatsType === 'ambiguous') return { vowel: 'a', shevaType: null, qamatsType, altVowels: ['o'] }
     return { vowel: 'a', shevaType: null, qamatsType }
@@ -393,11 +395,11 @@ function vowelSound(atom, atoms, index, tradition, shevaMode) {
   // Ashkenazic vowel preferences vary widely by region (Lithuanian, German,
   // Polish, American). We aim for the Modern American Ashkenazic baseline used
   // in most US Hebrew schools: kamatz "o" (vs Seph "a"), but accept "oh" for
-  // cholam and "e" for tzere as common variants. Strict enforcement is only
-  // applied where the dialect distinction is clearly audible (kamatz, tav).
+  // cholam and "e" for tzere as common variants. Kamatz is graded leniently
+  // ("o", "a" and "u" all pass — see vowelSound); tav/sav is enforced.
   const MAP_ASHK = {
     'patah':         'a',
-    'qamats':        'o',   // distinct from patach — enforced
+    'qamats':        'o',   // canonical; "a"/"u" also accepted (vowelSound)
     'tzere':         'e',   // accept "e" or "ay" — use "e" as canonical
     'segol':         'e',
     'hiriq':         'i',

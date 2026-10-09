@@ -32,6 +32,8 @@ function vowelVariants(seg) {
   } else if (vowel === 'qamats') {
     if (isFinal && out.has('a')) out.add('ah') // "+ah" trailing only at word end
     if (out.has('o')) { out.add('aw'); out.add('oh') } // Ashkenazic kamatz / qamats katan
+    if (out.has('u')) out.add('uh') // Ashkenazic kamatz reduced to "buh-"
+
   } else if (vowel === 'patah') {
     if (isFinal) out.add('ah') // "+ah" trailing only at word end
   } else if (vowel === 'segol') {
@@ -217,6 +219,14 @@ function nextSyllableCanStartAt(remaining, nextSyl) {
   return false
 }
 
+// Could the next audible syllable begin with `ch`, in any accepted spelling?
+// Used to keep vowel-elongation detection from eating the next syllable's
+// vowel (Ashkenazic הָאָרֶץ "haarets": the second "a" is the alef's kamatz).
+function nextSyllableStartsWith(nextSyl, ch) {
+  if (!nextSyl?.expected) return false
+  return (nextSyl.variants ?? [nextSyl.expected]).some(v => v[0] === ch)
+}
+
 function alignSyllables(syllables, studentPhonetic) {
   const student = normalizeStudent(studentPhonetic).replace(/\s+/g, '')
   let pos = 0
@@ -262,8 +272,7 @@ function alignSyllables(syllables, studentPhonetic) {
       // for וְאֵת: the second "e" belongs to alef+segol, not to elongation).
       let elongated = ''
       const lastVowelChar = variantMatch.match(/[aeiouy]$/)?.[0]
-      const nextStartsWithSameVowel =
-        lastVowelChar && nextSyl?.expected && nextSyl.expected[0] === lastVowelChar
+      const nextStartsWithSameVowel = lastVowelChar && nextSyllableStartsWith(nextSyl, lastVowelChar)
       if (lastVowelChar && !nextStartsWithSameVowel) {
         const after = remaining.slice(variantMatch.length)
         while (elongated.length < 3 && after[elongated.length] === lastVowelChar) {
@@ -380,8 +389,7 @@ function alignSyllables(syllables, studentPhonetic) {
         // next audible syllable's vowel.
         const after = remaining.slice(consumed)
         const lastVowelChar = vMatch[vMatch.length - 1]
-        const nextStartsWithSameVowel =
-          nextSyl?.expected && nextSyl.expected[0] === lastVowelChar
+        const nextStartsWithSameVowel = nextSyllableStartsWith(nextSyl, lastVowelChar)
         if (/[aeiouy]/.test(lastVowelChar) && !nextStartsWithSameVowel) {
           let extra = 0
           while (extra < 3 && after[extra] === lastVowelChar) extra++

@@ -1,4 +1,4 @@
-// Experimental word-based score (dev only, shown beside the current Overall).
+// Word-based score: the verse score for the rules-engine modes (OpenAI Rules, Manual).
 //
 // Every word is an equal share of the verse. A word is made of its sounds —
 // each consonant and each vowel (sheva included) — and is 100 only when all of
@@ -53,5 +53,25 @@ export function computeWordScore(words) {
     wordsTotal: scored.length,
     soundsRight: sum('soundsRight'),
     soundsTotal: sum('sounds'),
+  }
+}
+
+// Puts the word-based score onto an assessment's results: each word's score
+// becomes its word-based score, and the verse score (scores.pronunciation, which
+// the history badge reads) becomes the word-based score, with the counts
+// alongside. The old accuracy/completeness figures stay for the raw data.
+export function applyWordScore(words, scores) {
+  const ws = computeWordScore(words)
+  if (!ws) return { words, scores }
+  return {
+    words: words.map((w, i) => ({ ...w, score: ws.words[i].score })),
+    scores: {
+      ...scores,
+      pronunciation: ws.score,
+      wordsCorrect: ws.wordsClean,
+      wordsTotal: ws.wordsTotal,
+      soundsRight: ws.soundsRight,
+      soundsTotal: ws.soundsTotal,
+    },
   }
 }

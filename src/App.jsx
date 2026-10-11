@@ -11,7 +11,6 @@ import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
 import { waitForAudio } from './utils/micReady'
 import { checkRecording } from './utils/recordingCheck'
-import { computeWordScore } from './utils/wordScore'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
 import ProgressView from './components/ProgressView'
@@ -176,7 +175,7 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
   )
 }
 
-function ScoreRing({ value, label }) {
+function ScoreRing({ value, label, text }) {
   const radius = 28
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (value / 100) * circumference
@@ -195,7 +194,7 @@ function ScoreRing({ value, label }) {
           transform="rotate(-90 36 36)"
         />
         <text x="36" y="41" textAnchor="middle" fontSize="14" fontWeight="600" fill={color}>
-          {Math.round(value)}
+          {text ?? Math.round(value)}
         </text>
       </svg>
       <span className="score-ring-label">{label}</span>
@@ -1049,9 +1048,26 @@ export default function App() {
 
           {displayScores && (
             <div className="score-panel">
-              {(() => {
-                // Fluency is only measured by Azure; the other engines have no
-                // fluency signal of their own, so the circle is shown for Azure only.
+              {displayScores.wordsTotal != null ? (
+                // Rules-engine modes: the word-based score and how many words were read correctly
+                <>
+                  <div className="score-rings">
+                    <ScoreRing value={displayScores.pronunciation} label="Score" />
+                    <ScoreRing
+                      value={(100 * displayScores.wordsCorrect) / displayScores.wordsTotal}
+                      text={`${displayScores.wordsCorrect}/${displayScores.wordsTotal}`}
+                      label="Words correct"
+                    />
+                  </div>
+                  <p className="score-note">
+                    {displayScores.soundsRight} of {displayScores.soundsTotal} sounds right in the words read.
+                    Every word counts equally: a word is 100 when all its sounds are right,
+                    at most 80 with any mistake, and 0 if skipped.
+                  </p>
+                </>
+              ) : (() => {
+                // Azure, OpenAI (LLM), and attempts saved before the word-based score.
+                // Fluency is only measured by Azure, so its circle is shown for Azure only.
                 const isAzure = (displayRawSegments[0]?.provider ?? 'azure') === 'azure'
                 return (
                   <>
@@ -1067,45 +1083,6 @@ export default function App() {
                         : 'Overall = Accuracy (75%) + Completeness (25%).'}
                     </p>
                   </>
-                )
-              })()}
-
-              {/* Experimental scoring model, compared side by side in dev only */}
-              {import.meta.env.DEV && (() => {
-                const m = computeWordScore(displayWords)
-                if (!m) return null
-                const missed = m.words.filter(w => w.score < 100)
-                return (
-                  <div className="word-score">
-                    <div className="word-score-head">
-                      <span className="word-score-tag">Experimental · dev only</span>
-                      <span className="word-score-title">Word-based score</span>
-                    </div>
-                    <div className="word-score-stats">
-                      <div className="word-score-stat">
-                        <span className="word-score-value" style={{ color: scoreColor(m.score) }}>{m.score}</span>
-                        <span className="word-score-label">Score</span>
-                      </div>
-                      <div className="word-score-stat">
-                        <span className="word-score-value" style={{ color: scoreColor(100 * m.wordsClean / m.wordsTotal) }}>
-                          {m.wordsClean}<span className="word-score-of">/{m.wordsTotal}</span>
-                        </span>
-                        <span className="word-score-label">Words read correctly</span>
-                      </div>
-                    </div>
-                    <p className="word-score-detail">
-                      {m.soundsRight} of {m.soundsTotal} sounds right in the words read
-                    </p>
-                    {missed.length > 0 && (
-                      <p className="word-score-detail word-score-words" dir="rtl">
-                        {missed.map((w, i) => (
-                          <span key={i} title={w.skipped ? 'skipped' : `${w.mistakes} mistake${w.mistakes === 1 ? '' : 's'} in ${w.sounds} sounds`}>
-                            <span dir="rtl" lang="he">{w.word}</span> {w.score}
-                          </span>
-                        ))}
-                      </p>
-                    )}
-                  </div>
                 )
               })()}
 

@@ -7,6 +7,7 @@
 // genuinely good at — listening and transliterating sounds.
 
 import { scoreWords } from '../utils/hebrewScoring.js'
+import { applyWordScore } from '../utils/wordScore.js'
 import { alignByDP, tokenizePhonetic, applyAlignmentNotes } from '../utils/phoneticAlignment.js'
 import { callOpenAIAudio } from './openaiProxy.js'
 
@@ -55,7 +56,7 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
     : 0
   const pronunciation = Math.round(accuracy * 0.75 + completeness * 0.25)
 
-  const scores = { pronunciation, accuracy, fluency: accuracy, completeness }
+  const oldScores = { pronunciation, accuracy, fluency: accuracy, completeness }
 
   const flaggedSyllables = scored.flatMap(w =>
     w.syllables.filter(s => s.note).map(s => ({ word: w.word, syllable: s.phoneme, note: s.note }))
@@ -66,7 +67,7 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
       ? `Found ${flaggedSyllables.length} item${flaggedSyllables.length === 1 ? '' : 's'} to work on.`
       : 'Some words could use work — see word-by-word details.'
 
-  const words = scored.map(w => ({
+  const { words, scores } = applyWordScore(scored.map(w => ({
     word: w.word,
     score: w.score,
     errorType: w.errorType,
@@ -77,7 +78,7 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
       note: s.note,
       breakdown: s.breakdown,
     })),
-  }))
+  })), oldScores)
 
   const rawSegment = {
     provider: 'openai-rules',

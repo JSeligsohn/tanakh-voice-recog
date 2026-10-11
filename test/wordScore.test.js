@@ -1,4 +1,4 @@
-// The experimental word-based score on real readings (the full-verse
+// The word-based score on real readings (the full-verse
 // transcription check takes), graded through Manual mode's pipeline.
 
 import { test } from 'node:test'
@@ -59,4 +59,12 @@ test('attempts without per-sound detail (Azure, OpenAI LLM) are not scored', () 
   const azureWords = [{ word: 'א', errorType: 'Mispronunciation', phonemes: [{ phoneme: 'a', accuracyScore: 50 }] }]
   assert.equal(computeWordScore(azureWords), null)
   assert.equal(computeWordScore([]), null)
+})
+
+test('assessments report the word-based score as the verse score and on each word', () => {
+  const { words, scores } = assessManual(psukim[1].text, 'veescha legoy gagol vavarechecha avagadla shomcha veyes brecha', { tradition: 'ashkenazic' })
+  const r = computeWordScore(words)
+  assert.equal(scores.pronunciation, r.score)
+  assert.deepEqual([scores.wordsCorrect, scores.wordsTotal, scores.soundsRight, scores.soundsTotal], [1, 8, 42, 52])
+  assert.deepEqual(words.map(w => w.score), r.words.map(w => w.score))
 })

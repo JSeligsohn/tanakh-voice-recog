@@ -3,13 +3,18 @@
 // Every word is an equal share of the verse. A word is made of its sounds —
 // each consonant and each vowel (sheva included) — and is 100 only when all of
 // them are read correctly. Each mistake takes one sound's share off the word,
-// so a mistake in a short word costs more of it than one in a long word.
+// so a mistake in a short word costs more of it than one in a long word. A word
+// with any mistake also drops to 80% of that, so it can't score above 80 — a
+// misread word should stand apart from a correct one, not land at 90-something.
 //
 //   - A wrong consonant or vowel (including a skipped syllable's sounds) is a
 //     mistake. Accepted variants (e.g. Ashkenazic kamatz as "a") count as right.
 //   - A slip with no wrong sound — an extra sound, a held vowel, a stutter, the
 //     word read out of place — is also one mistake.
 //   - A skipped word scores 0. A word never goes below 0, so neither does the verse.
+
+// A word with any mistake keeps this share of its sound score.
+export const MISTAKE_WORD_FACTOR = 0.8
 
 // words: graded words as the results view gets them ({ errorType, phonemes:
 // [{ note, breakdown: { consonant, vowel } }] }). Returns null for attempts
@@ -35,7 +40,8 @@ export function computeWordScore(words) {
       // own note, already counted above.
       if (p.note && wrong === 0 && w.errorType !== 'OutOfOrder') mistakes++
     }
-    const score = sounds ? Math.max(0, Math.round(100 * (sounds - mistakes) / sounds)) : (mistakes ? 0 : 100)
+    const soundShare = sounds ? Math.max(0, (sounds - mistakes) / sounds) : (mistakes ? 0 : 1)
+    const score = Math.round(100 * soundShare * (mistakes ? MISTAKE_WORD_FACTOR : 1))
     return { word: w.word, score, sounds, soundsRight, mistakes, skipped: false }
   })
 

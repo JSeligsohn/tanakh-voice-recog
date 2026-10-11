@@ -19,23 +19,23 @@ test('a clean reading scores 100 with every word clean', () => {
   assert.deepEqual([r.wordsClean, r.wordsTotal], [16, 16])
 })
 
-test('each mistake takes one sound\'s share off its word', () => {
-  // דִּבֶּר has 5 sounds; one wrong letter leaves 4/5.
+test('each mistake takes one sound\'s share off its word, and a misread word keeps 80% of that', () => {
+  // דִּבֶּר has 5 sounds; one wrong letter leaves 4/5, × 0.8 = 64.
   const r = score(3, 'sephardic', LECH_LECHA_4.replace('diber', 'dibel'))
-  assert.deepEqual(wordScores(r), { 'דִּבֶּר': 80 })
-  assert.equal(r.score, 99)
+  assert.deepEqual(wordScores(r), { 'דִּבֶּר': 64 })
+  assert.equal(r.score, 98)
 
-  // שְׁמַע has 4 sounds; voicing the sheva leaves 3/4.
+  // שְׁמַע has 4 sounds; voicing the sheva leaves 3/4, × 0.8 = 60.
   const shema = score(5, 'ashkenazic', 'shma yisroel hashem elohenu hashem echod')
-  assert.deepEqual(wordScores(shema), { 'שְׁמַע': 75 })
+  assert.deepEqual(wordScores(shema), { 'שְׁמַע': 60 })
 })
 
 test('a wrong vowel or extra sound counts against the word like a wrong letter', () => {
   const r = score(1, 'ashkenazic', 'veescha legoy gagol vavarechecha avagadla shomcha veyes brecha')
   assert.deepEqual([r.soundsRight, r.soundsTotal, r.wordsClean], [42, 52, 1])
-  // וַאֲבָרֶכְךָ: one wrong vowel and one extra sound, 2 mistakes in 10 sounds.
-  assert.equal(wordScores(r)['וַאֲבָרֶכְךָ'], 80)
-  assert.equal(r.score, 75)
+  // וַאֲבָרֶכְךָ: one wrong vowel and one extra sound, 2 mistakes in 10 sounds → 8/10 × 0.8.
+  assert.equal(wordScores(r)['וַאֲבָרֶכְךָ'], 64)
+  assert.equal(r.score, 63)
 })
 
 test('a skipped word scores 0', () => {
@@ -46,7 +46,7 @@ test('a skipped word scores 0', () => {
 
 test('a word read out of place is one mistake, not also a slip', () => {
   const r = score(8, 'sephardic', 'az yashir moshe yisrael uvne et hashira hazot')
-  assert.deepEqual(wordScores(r), { 'וּבְנֵי': 80 })
+  assert.deepEqual(wordScores(r), { 'וּבְנֵי': 64 })
 })
 
 test('the score never drops below zero', () => {

@@ -129,6 +129,7 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
   }
 
   const heardByRef = new Array(N).fill('')
+  const spanByRef = new Array(N).fill(null) // [first, last+1) student token indices
   const stutters = new Array(N).fill(false)
   const skippedTokens = [] // { j, refPos } — student tokens the DP left unassigned
   let i = N, j = M
@@ -138,6 +139,7 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
     if (mv.type === 'match') {
       const span = mv.span
       heardByRef[i - 1] = studentTokens.slice(j - span, j).join('')
+      spanByRef[i - 1] = [j - span, j]
       // Any of the matched tokens were stuttered?
       for (let k = j - span; k < j; k++) {
         if (stutterMap[k] > 0) { stutters[i - 1] = true; break }
@@ -150,8 +152,35 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
       j--
     }
   }
+  moveStrayPrefixes(expected, studentTokens, heardByRef, spanByRef)
   const outOfOrder = recoverSwappedWords(expected, studentTokens, heardByRef, skippedTokens)
   return { heardByRef, stutters, outOfOrder }
+}
+
+// A spoken syllable that sounds like a Hebrew prefix letter (ה ו ב כ ל מ ש)
+// with its vowel — "ka", "ve", "ha", "mi"…
+const PREFIX_SYLLABLE = /^(h[ae]|v[aei]|u|b[aei]|k[aei]|l[aei]|m[aei]|sh[ae])$/
+
+// The DP scores similarity relative to word length, so an extra token between
+// two words tends to land on the end of the longer one: "el ha arets ka asher"
+// (כַּאֲשֶׁר read for אֲשֶׁר) groups "ka" with הָאָרֶץ. Prefix letters only ever
+// attach to the start of a word, so when a word's last token is a prefix
+// syllable that doesn't belong to it, move it to the start of the next word.
+// Mutates heardByRef and spanByRef.
+function moveStrayPrefixes(expected, studentTokens, heardByRef, spanByRef) {
+  for (let r = 0; r < expected.length - 1; r++) {
+    const span = spanByRef[r]
+    const next = spanByRef[r + 1]
+    if (!span || !next || span[1] - span[0] < 2 || next[0] !== span[1]) continue
+    const last = studentTokens[span[1] - 1]
+    if (!PREFIX_SYLLABLE.test(last)) continue
+    const without = studentTokens.slice(span[0], span[1] - 1).join('')
+    if (similarity(expected[r], without) <= similarity(expected[r], heardByRef[r])) continue
+    heardByRef[r] = without
+    heardByRef[r + 1] = last + heardByRef[r + 1]
+    spanByRef[r] = [span[0], span[1] - 1]
+    spanByRef[r + 1] = [span[1] - 1, next[1]]
+  }
 }
 
 // The DP is strictly forward, so a word read in the wrong position ("avram el"

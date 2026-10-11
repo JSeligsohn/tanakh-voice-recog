@@ -115,4 +115,13 @@ export const verseCases = [
     text: 'לֶךְ־לְךָ מֵאַרְצְךָ', heard: 'lech lecha meartsecha',
     expect: {}, rule: 'maqef word spoken as two tokens',
   },
+  {
+    text: 'אֶל־הָאָרֶץ אֲשֶׁר', heard: 'el ha arets ka asher',
+    expect: { 1: 'Mispronunciation' }, notes: { 1: 'Extra "k"' },
+    rule: 'an extra prefix syllable between words goes on the next word (כַּאֲשֶׁר for אֲשֶׁר)',
+  },
+  {
+    text: 'וַאֲגַדְּלָה שְׁמֶךָ', heard: 'vaagad la shemecha',
+    expect: {}, rule: 'a prefix-like syllable that ends the word stays with it',
+  },
 ]

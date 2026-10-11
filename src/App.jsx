@@ -11,6 +11,7 @@ import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
 import { waitForAudio } from './utils/micReady'
 import { checkRecording } from './utils/recordingCheck'
+import { computeMistakeScore, MISTAKE_LABELS } from './utils/mistakeScore'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
 import ProgressView from './components/ProgressView'
@@ -1066,6 +1067,29 @@ export default function App() {
                         : 'Overall = Accuracy (75%) + Completeness (25%).'}
                     </p>
                   </>
+                )
+              })()}
+
+              {/* Experimental scoring model, compared side by side in dev only */}
+              {import.meta.env.DEV && (() => {
+                const m = computeMistakeScore(displayWords)
+                if (!m) return null
+                return (
+                  <div className="mistake-score">
+                    <div className="mistake-score-head">
+                      <span className="mistake-score-tag">Experimental · dev only</span>
+                      <span className="mistake-score-title">Mistake-based score</span>
+                      <span className="mistake-score-value" style={{ color: scoreColor(m.score) }}>{m.score}</span>
+                    </div>
+                    <p className="mistake-score-detail">
+                      {m.deductions.length === 0
+                        ? 'No mistakes.'
+                        : m.deductions
+                            .map(d => `${d.count} ${MISTAKE_LABELS[d.kind][d.count === 1 ? 0 : 1]} (−${d.points})`)
+                            .join(' · ')}
+                    </p>
+                    <p className="mistake-score-detail">{m.wordsClean} of {m.wordsTotal} words read cleanly</p>
+                  </div>
                 )
               })()}
 

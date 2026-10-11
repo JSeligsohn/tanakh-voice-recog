@@ -1411,6 +1411,49 @@
   line-height: 1.5;
 }
 
+/* Experimental mistake-based score (dev only) */
+.mistake-score {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px dashed #d6d3d1;
+  border-radius: 10px;
+  background: #fbf9f6;
+  text-align: left;
+}
+
+.mistake-score-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.mistake-score-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #1e40af;
+}
+
+.mistake-score-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1c1917;
+}
+
+.mistake-score-value {
+  margin-left: auto;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.mistake-score-detail {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: #57534e;
+}
+
 /* ── Manual phonetic input (dev/test mode) ─ */
 .manual-input-group {
   display: flex;

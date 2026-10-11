@@ -578,6 +578,15 @@ function scoreSyllable(m, tradition, shevaMode) {
 
   if (m.status === 'extra-consonant') {
     const L = m.atom.letter
+    // A silent letter carrying a vowel (אֶ, אָ, עַ) is read as just that vowel.
+    // Calling the letter "silent" here reads as "say nothing", so name the vowel.
+    if (m.vowel) {
+      const where = m.atom.wordStart ? `at the start — ${m.display}` : `before ${m.display} — it`
+      return {
+        score: 70,
+        note: `Extra "${m.insertedBefore}" sound ${where} is just the vowel "${m.expected}", with no consonant before it.`,
+      }
+    }
     const which = L === 'ה' ? 'silent ה' : L === 'א' ? 'silent א (alef)' : L === 'ע' ? 'silent ע (ayin)' : L
     return {
       score: 70,
@@ -634,7 +643,7 @@ function buildMismatchNote(m, tradition) {
   }
   // Generic
   if (m.heard) return `${L} should be "${m.expected}" — heard "${m.heard}".`
-  return `${L} expected sound was not heard.`
+  return `Skipped — the "${m.expected}" sound of ${m.display} wasn't heard.`
 }
 
 // Per-syllable sound breakdown for the sound-by-sound report. Each audible sound

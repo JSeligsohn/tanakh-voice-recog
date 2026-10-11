@@ -480,7 +480,8 @@ function scoreSyllable(m, tradition, shevaMode) {
   // Silent atoms (e.g. final silent ה) always score 100
   if (m.status === 'silent') return { score: 100, note: '' }
 
-  if (m.status === 'matched') return { score: 95, note: '' }
+  // A correctly read sound is fully correct: the rules decide right or wrong
+  if (m.status === 'matched') return { score: 100, note: '' }
 
   if (m.status === 'matched-with-insertion') {
     return {
@@ -496,8 +497,6 @@ function scoreSyllable(m, tradition, shevaMode) {
     }
   }
 
-  if (m.status === 'matched-after-skip') return { score: 90, note: '' }
-
   if (m.status === 'extra-vowel') {
     // Probably a sheva nach that was pronounced as vocal
     if (m.shevaType === 'nach' && shevaMode === 'enforce') {
@@ -506,7 +505,7 @@ function scoreSyllable(m, tradition, shevaMode) {
         note: `Sheva nach should be silent — heard an inserted "${m.heardVowel}" sound.`,
       }
     }
-    return { score: 90, note: '' } // benign extra vowel
+    return { score: 100, note: '' } // benign extra vowel: not a mistake, no deduction
   }
 
   if (m.status === 'genuvah-reversed') {

@@ -1411,8 +1411,8 @@
   line-height: 1.5;
 }
 
-/* Experimental mistake-based score (dev only) */
-.mistake-score {
+/* Experimental word-based score (dev only) */
+.word-score {
   margin-top: 0.9rem;
   padding: 0.7rem 0.9rem;
   border: 1px dashed #d6d3d1;
@@ -1421,14 +1421,14 @@
   text-align: left;
 }
 
-.mistake-score-head {
+.word-score-head {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
 }
 
-.mistake-score-tag {
+.word-score-tag {
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -1436,22 +1436,28 @@
   color: #1e40af;
 }
 
-.mistake-score-title {
+.word-score-title {
   font-size: 0.88rem;
   font-weight: 600;
   color: #1c1917;
 }
 
-.mistake-score-value {
+.word-score-value {
   margin-left: auto;
   font-size: 1.4rem;
   font-weight: 700;
 }
 
-.mistake-score-detail {
+.word-score-detail {
   margin: 0.3rem 0 0;
   font-size: 0.8rem;
   color: #57534e;
+}
+
+.word-score-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
 }
 
 /* ── Manual phonetic input (dev/test mode) ─ */

@@ -11,7 +11,7 @@ import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
 import { waitForAudio } from './utils/micReady'
 import { checkRecording } from './utils/recordingCheck'
-import { computeMistakeScore, MISTAKE_LABELS } from './utils/mistakeScore'
+import { computeWordScore } from './utils/wordScore'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
 import ProgressView from './components/ProgressView'
@@ -1072,23 +1072,28 @@ export default function App() {
 
               {/* Experimental scoring model, compared side by side in dev only */}
               {import.meta.env.DEV && (() => {
-                const m = computeMistakeScore(displayWords)
+                const m = computeWordScore(displayWords)
                 if (!m) return null
+                const missed = m.words.filter(w => w.score < 100)
                 return (
-                  <div className="mistake-score">
-                    <div className="mistake-score-head">
-                      <span className="mistake-score-tag">Experimental · dev only</span>
-                      <span className="mistake-score-title">Mistake-based score</span>
-                      <span className="mistake-score-value" style={{ color: scoreColor(m.score) }}>{m.score}</span>
+                  <div className="word-score">
+                    <div className="word-score-head">
+                      <span className="word-score-tag">Experimental · dev only</span>
+                      <span className="word-score-title">Word-based score</span>
+                      <span className="word-score-value" style={{ color: scoreColor(m.score) }}>{m.score}</span>
                     </div>
-                    <p className="mistake-score-detail">
-                      {m.deductions.length === 0
-                        ? 'No mistakes.'
-                        : m.deductions
-                            .map(d => `${d.count} ${MISTAKE_LABELS[d.kind][d.count === 1 ? 0 : 1]} (−${d.points})`)
-                            .join(' · ')}
+                    <p className="word-score-detail">
+                      {m.wordsClean} of {m.wordsTotal} words read cleanly · {m.soundsRight} of {m.soundsTotal} sounds right in the words read
                     </p>
-                    <p className="mistake-score-detail">{m.wordsClean} of {m.wordsTotal} words read cleanly</p>
+                    {missed.length > 0 && (
+                      <p className="word-score-detail word-score-words">
+                        {missed.map((w, i) => (
+                          <span key={i} title={w.skipped ? 'skipped' : `${w.mistakes} mistake${w.mistakes === 1 ? '' : 's'} in ${w.sounds} sounds`}>
+                            <span dir="rtl" lang="he">{w.word}</span> {w.score}
+                          </span>
+                        ))}
+                      </p>
+                    )}
                   </div>
                 )
               })()}

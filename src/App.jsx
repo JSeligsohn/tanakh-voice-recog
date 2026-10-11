@@ -1080,13 +1080,24 @@ export default function App() {
                     <div className="word-score-head">
                       <span className="word-score-tag">Experimental · dev only</span>
                       <span className="word-score-title">Word-based score</span>
-                      <span className="word-score-value" style={{ color: scoreColor(m.score) }}>{m.score}</span>
+                    </div>
+                    <div className="word-score-stats">
+                      <div className="word-score-stat">
+                        <span className="word-score-value" style={{ color: scoreColor(m.score) }}>{m.score}</span>
+                        <span className="word-score-label">Score</span>
+                      </div>
+                      <div className="word-score-stat">
+                        <span className="word-score-value" style={{ color: scoreColor(100 * m.wordsClean / m.wordsTotal) }}>
+                          {m.wordsClean}<span className="word-score-of">/{m.wordsTotal}</span>
+                        </span>
+                        <span className="word-score-label">Words read correctly</span>
+                      </div>
                     </div>
                     <p className="word-score-detail">
-                      {m.wordsClean} of {m.wordsTotal} words read cleanly · {m.soundsRight} of {m.soundsTotal} sounds right in the words read
+                      {m.soundsRight} of {m.soundsTotal} sounds right in the words read
                     </p>
                     {missed.length > 0 && (
-                      <p className="word-score-detail word-score-words">
+                      <p className="word-score-detail word-score-words" dir="rtl">
                         {missed.map((w, i) => (
                           <span key={i} title={w.skipped ? 'skipped' : `${w.mistakes} mistake${w.mistakes === 1 ? '' : 's'} in ${w.sounds} sounds`}>
                             <span dir="rtl" lang="he">{w.word}</span> {w.score}

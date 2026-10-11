@@ -1442,10 +1442,32 @@
   color: #1c1917;
 }
 
+.word-score-stats {
+  display: flex;
+  gap: 1.6rem;
+  margin-top: 0.5rem;
+}
+
+.word-score-stat {
+  display: flex;
+  flex-direction: column;
+}
+
 .word-score-value {
-  margin-left: auto;
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   font-weight: 700;
+  line-height: 1.1;
+}
+
+.word-score-of {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #78716c;
+}
+
+.word-score-label {
+  font-size: 0.72rem;
+  color: #57534e;
 }
 
 .word-score-detail {

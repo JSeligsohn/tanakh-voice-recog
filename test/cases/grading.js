@@ -68,6 +68,7 @@ export const gradingCases = [
   { word: 'פֶּה', heard: 'fe', flag: 'with dagesh', rule: 'פּ read as f' },
   { word: 'בְּרֵאשִׁית', heard: 'bereshit', trad: 'ashkenazic', flag: 'sav', rule: 'Ashkenazic ת read as t' },
   { word: 'יָדָהּ', heard: 'yada', flag: 'mappiq', rule: 'mappiq ה not sounded' },
+  { word: 'וֶהְיֵה', heard: 'veye', trad: 'ashkenazic', flag: 'should be pronounced "h" here', rule: 'silent ה with sheva: no mention of mappiq' },
   { word: 'רוּחַ', heard: 'rucha', flag: 'Patach genuvah', rule: 'patach genuvah read after the letter' },
   { word: 'רוּחַ', heard: 'ruch', flag: 'Patach genuvah', rule: 'patach genuvah dropped' },
   { word: 'שָׁלוֹם', heard: 'sholom', flag: 'Vowel mismatch', rule: 'Sephardic qamats gadol read as o' },

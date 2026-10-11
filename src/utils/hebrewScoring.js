@@ -589,7 +589,10 @@ function buildMismatchNote(m, tradition) {
     return `פ (no dagesh) should be "f" — heard "p" instead.`
   }
   if (L === 'ה' && expectedC === 'h' && !heardC) {
-    return `ה with mappiq should be pronounced "h" — heard silence.`
+    // Only a word-final ה with a dot is a mappiq; elsewhere (וֶהְיֵה) it's just a sounded ה
+    return m.atom.isFinal && m.atom.dagesh
+      ? `ה with mappiq should be pronounced "h" — heard silence.`
+      : `ה should be pronounced "h" here — heard silence.`
   }
   if (L === 'ה' && !expectedC && heardC.startsWith('h')) {
     return `Final ה should be silent here — heard "h".`

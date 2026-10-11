@@ -4,6 +4,7 @@
 //   trad — 'sephardic' (default) or 'ashkenazic'
 //   pass — the reading must grade clean (no notes, no mispronunciation)
 //   flag — the reading must be flagged, with a note containing this text
+//   notes — optional: exactly this many notes (one slip must not cascade)
 //   review / todo — as in expected.js
 
 export const gradingCases = [
@@ -68,7 +69,13 @@ export const gradingCases = [
   { word: 'פֶּה', heard: 'fe', flag: 'with dagesh', rule: 'פּ read as f' },
   { word: 'בְּרֵאשִׁית', heard: 'bereshit', trad: 'ashkenazic', flag: 'sav', rule: 'Ashkenazic ת read as t' },
   { word: 'יָדָהּ', heard: 'yada', flag: 'mappiq', rule: 'mappiq ה not sounded' },
-  { word: 'וֶהְיֵה', heard: 'veye', trad: 'ashkenazic', flag: 'should be pronounced "h" here', rule: 'silent ה with sheva: no mention of mappiq' },
+  { word: 'וֶהְיֵה', heard: 'veye', trad: 'ashkenazic', flag: 'the "h" sound of', notes: 1, rule: 'ה with sheva left out: one skipped sound, no mention of mappiq' },
+  { word: 'וֶהְיֵה', heard: 'veyis', trad: 'ashkenazic', flag: 'should be pronounced "h" here', rule: 'silent ה with sheva: no mention of mappiq (production reading)' },
+  { word: 'וְאֶעֶשְׂךָ', heard: "ve'escha", trad: 'ashkenazic', flag: 'Skipped', notes: 1, rule: 'one dropped syllable is one mistake, not three' },
+  { word: 'וַאֲבָרֶכְךָ', heard: "ka'arechcha", trad: 'ashkenazic', flag: 'Skipped', notes: 2, rule: 'wrong letter + dropped syllable = two mistakes, not four' },
+  { word: 'וַיֹּאמֶר', heard: 'vamer', flag: 'Skipped', notes: 1, rule: 'dropped syllable mid-word' },
+  { word: 'בְּרֵאשִׁית', heard: 'rereshit', flag: 'should be', notes: 1, rule: 'a wrong letter is not mistaken for a skipped syllable' },
+  { word: 'הַשֵּׁם', heard: 'kashem', flag: 'heard "ka"', notes: 1, rule: 'the "h" inside "sh" is not taken as ה' },
   { word: 'רוּחַ', heard: 'rucha', flag: 'Patach genuvah', rule: 'patach genuvah read after the letter' },
   { word: 'רוּחַ', heard: 'ruch', flag: 'Patach genuvah', rule: 'patach genuvah dropped' },
   { word: 'שָׁלוֹם', heard: 'sholom', flag: 'Vowel mismatch', rule: 'Sephardic qamats gadol read as o' },

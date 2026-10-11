@@ -22,6 +22,7 @@ for (const c of gradingCases) {
       assert.equal(r.errorType, 'None')
     } else {
       assert.ok(notes.some(n => n.includes(c.flag)), `no note mentions "${c.flag}". Notes: ${JSON.stringify(notes)}`)
+      if (c.notes !== undefined) assert.equal(notes.length, c.notes, `expected ${c.notes} note(s). Notes: ${JSON.stringify(notes)}`)
     }
   })
 }

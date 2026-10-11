@@ -349,8 +349,10 @@ function alignSyllables(syllables, studentPhonetic) {
         // Lookahead: maybe the student inserted 1-2 consonants before the
         // expected consonant. If so, treat those as inserted-before chars and
         // still credit the syllable's consonant as matched.
+        // Never start inside a digraph: the "h" of "sh" isn't an "h" ("kashem").
         let skip = 0, laterMatch = null
         for (let k = 1; k <= 4 && k < remaining.length; k++) {
+          if (DIGRAPHS.includes(remaining.slice(k - 1, k + 1))) continue
           const m = consonantOptions.map(opt => matchAnyVariant(remaining.slice(k), opt)).find(Boolean)
           if (m) { skip = k; laterMatch = m; break }
         }
@@ -433,6 +435,32 @@ function alignSyllables(syllables, studentPhonetic) {
       status = 'mismatch'
     }
 
+    // Skipped syllable: when this syllable didn't match, the reader may have
+    // left it out ("ve'escha" for וְאֶעֶשְׂךָ drops one "e"). Reading it as a
+    // wrong sound would consume the next syllable's sounds and throw every
+    // later syllable out of step, so one slip showed up as three mistakes.
+    // Call it skipped only when the wrong-sound reading leaves the next
+    // syllable unable to start but what was said here is exactly the next
+    // syllable; a plain wrong letter ("rereshit") keeps the next in step.
+    const isProblem = status !== 'matched' && status !== 'vowel-elongated'
+    if (isProblem && nextSyl) {
+      const wrongSoundFits = nextSyllableCanStartAt(remaining.slice(Math.max(1, consumed)), nextSyl)
+      const skipFits = (nextSyl.variants ?? [nextSyl.expected]).some(v => v && cleanMatch(remaining, v))
+      if (!wrongSoundFits && skipFits) {
+        matches.push({
+          ...syl,
+          status: 'missing',
+          heardAt: pos,
+          heard: '',
+          heardConsonant: '',
+          heardVowel: '',
+          consonantMatched: !syl.consonant,
+          vowelMatched: !syl.vowel,
+        })
+        continue // nothing consumed: the next syllable starts here
+      }
+    }
+
     matches.push({
       ...syl,
       status,
@@ -506,6 +534,13 @@ function scoreSyllable(m, tradition, shevaMode) {
       }
     }
     return { score: 100, note: '' } // benign extra vowel: not a mistake, no deduction
+  }
+
+  if (m.status === 'missing') {
+    return {
+      score: 60,
+      note: `Skipped — the "${m.expected}" sound of ${m.display} wasn't heard.`,
+    }
   }
 
   if (m.status === 'genuvah-reversed') {

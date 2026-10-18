@@ -2,6 +2,9 @@
 // syllable's breakdown ({ consonant, vowel }) and aggregates how many times each
 // consonant letter and each vowel was read correctly vs. incorrectly.
 
+import { consonantSay, latinToSay } from '../utils/soundGuide'
+import SoundGuide from './SoundGuide'
+
 // Hebrew aleph-bet order. Final forms fold onto their base letter so e.g. ך and
 // כ share one row.
 const ALEPH_BET = ['א','ב','ג','ד','ה','ו','ז','ח','ט','י','כ','ל','מ','נ','ס','ע','פ','צ','ק','ר','ש','ת']
@@ -82,11 +85,13 @@ function aggregate(wordResults) {
         // make no sound, so they're skipped, not counted. A graded sheva nach
         // does count, as a vowel whose right sound is silence.
         if (b.consonant) {
-          consonants.push({ key: letterKey(b.consonant), sound: b.consonant.sound, correct: b.consonant.correct })
+          // Shown in the sound key's spelling; readings saved before it have only `sound`
+          const say = b.consonant.say ?? consonantSay(b.consonant.sound)
+          consonants.push({ key: letterKey(b.consonant), sound: say, correct: b.consonant.correct })
         }
         if (b.vowel) {
           // A sheva nach's sound is silence
-          const sound = b.vowel.name === 'sheva-nach' ? 'silent' : b.vowel.sound
+          const sound = b.vowel.name === 'sheva-nach' ? 'silent' : (b.vowel.say ?? latinToSay(b.vowel.sound))
           vowels.push({ key: vowelKey(b.vowel.name), sound, correct: b.vowel.correct })
         }
       } else if (syl.phoneme) {
@@ -203,6 +208,8 @@ export default function LetterBreakdown({ wordResults }) {
           </div>
         </div>
       )}
+
+      {(consonantRows.length > 0 || vowelRows.length > 0) && <SoundGuide />}
     </div>
   )
 }

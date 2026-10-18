@@ -2043,3 +2043,47 @@
     cursor: pointer;
   }
 }
+
+/* ── Sound guide ─────────────────────────── */
+.sound-guide {
+  margin-top: 0.9rem;
+  font-size: 0.82rem;
+  color: #44403c;
+}
+
+.sound-guide summary {
+  cursor: pointer;
+  color: #7f1d1d;
+  font-weight: 600;
+}
+
+.sound-guide-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2.5rem;
+  margin-top: 0.6rem;
+}
+
+.sound-guide-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #78716c;
+}
+
+.sound-guide-row {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.1rem 0;
+}
+
+.sound-guide-say {
+  min-width: 2rem;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+}
+
+.sound-guide-as-in {
+  color: #57534e;
+}

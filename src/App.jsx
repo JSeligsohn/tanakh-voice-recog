@@ -16,6 +16,7 @@ import { waitForAudio, MIC_CONSTRAINTS, RECORDER_OPTIONS } from './utils/micRead
 import { checkRecording } from './utils/recordingCheck'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
+import SoundGuide from './components/SoundGuide'
 import ProgressView from './components/ProgressView'
 import TeacherRoster from './components/TeacherRoster'
 import { dummyStudents } from './data/progressDummy'
@@ -925,6 +926,8 @@ export default function App() {
                       )
                     })}
                   </ul>
+                  {/* Rules-engine notes spell sounds with the sound key */}
+                  {displayWords.some(w => w.phonemes?.some(p => p.breakdown)) && <SoundGuide />}
                 </div>
               )
             })()}

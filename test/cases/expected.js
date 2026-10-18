@@ -49,8 +49,10 @@ export const expectedCases = [
   { word: 'לֶךְ־לְךָ', seph: 'lechlecha', rule: 'S5 nach at maqef end; S1 na after maqef' },
   { word: 'אֶת־בְּנוֹ', seph: 'etbeno', rule: 'S1 na at the start of a maqef component' },
   { word: 'שׁוֹמְרִים', seph: 'shomerim', rule: 'S2 sheva after a long vowel: shown vocal, silent also accepted' },
-  { word: 'הַמְּלָכִים', seph: 'hamelachim', rule: 'sheva under a dagesh chazak is na',
-    todo: 'no rule yet for sheva under dagesh chazak — engine gives "hamlachim"' },
+  { word: 'הַמְּלָכִים', seph: 'hamelachim', rule: 'S7 sheva under a dagesh chazak: shown vocal, silent also accepted' },
+  { word: 'וַאֲגַדְּלָה', seph: 'vaagadela', rule: 'S7 dagesh chazak after a patach' },
+  { word: 'אַחֶיךָ', seph: 'achecha', ashk: 'achecho', rule: 'silent yud after segol (plural suffix)' },
+  { word: 'דְּרָכֶיהָ', seph: 'deracheha', rule: 'silent yud after segol before ה' },
 
   // ── Patach genuvah ─────────────────────────────────────────────────
   { word: 'רוּחַ', seph: 'ruach', rule: 'patach genuvah under final ח' },

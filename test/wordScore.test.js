@@ -32,7 +32,7 @@ test('each mistake takes one sound\'s share off its word, and a misread word kee
 
 test('a wrong vowel or extra sound counts against the word like a wrong letter', () => {
   const r = score(1, 'ashkenazic', 'veescha legoy gagol vavarechecha avagadla shomcha veyes brecha')
-  assert.deepEqual([r.soundsRight, r.soundsTotal, r.wordsClean], [42, 52, 1])
+  assert.deepEqual([r.soundsRight, r.soundsTotal, r.wordsClean], [43, 53, 1])
   // וַאֲבָרֶכְךָ: one wrong vowel and one extra sound, 2 mistakes in 10 sounds → 8/10 × 0.8.
   assert.equal(wordScores(r)['וַאֲבָרֶכְךָ'], 64)
   assert.equal(r.score, 63)
@@ -65,6 +65,6 @@ test('assessments report the word-based score as the verse score and on each wor
   const { words, scores } = assessManual(psukim[1].text, 'veescha legoy gagol vavarechecha avagadla shomcha veyes brecha', { tradition: 'ashkenazic' })
   const r = computeWordScore(words)
   assert.equal(scores.pronunciation, r.score)
-  assert.deepEqual([scores.wordsCorrect, scores.wordsTotal, scores.soundsRight, scores.soundsTotal], [1, 8, 42, 52])
+  assert.deepEqual([scores.wordsCorrect, scores.wordsTotal, scores.soundsRight, scores.soundsTotal], [1, 8, 43, 53])
   assert.deepEqual(words.map(w => w.score), r.words.map(w => w.score))
 })

@@ -38,6 +38,8 @@ function vowelVariants(seg) {
     if (isFinal) out.add('ah') // "+ah" trailing only at word end
   } else if (vowel === 'segol') {
     if (isFinal) out.add('eh') // "+eh" trailing only at word end
+    // Segol before a silent yud (אַחֶיךָ): "acheycha" is a common reading too
+    if (seg.atom?.yudAfter) for (const v of ['ey', 'ei']) out.add(v)
   } else if (vowel === 'hiriq') {
     out.add('ee') // English spelling of "i" ("anee", "bereesheet")
     if (isFinal) out.add('iy')

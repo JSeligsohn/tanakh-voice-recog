@@ -85,13 +85,8 @@ function syllables(segments, { tradition, kamatz, part }) {
       out.push({ onset: '', vowel: 'a', coda: consonant, atom: s.atomIndex })
       return
     }
-    // A sheva under a doubled letter (dagesh chazak) is said: הַשְּׁבִיעִי =
-    // ha-she-vi-i. The engine accepts it silent when grading, as many readers do.
-    const prev = segments[k - 1]?.atom
-    const doubled = !s.vowel && s.atom.vowel === 'sheva' && s.atom.dagesh && k < segments.length - 1 &&
-      prev?.vowel && prev.vowel !== 'sheva'
-    if (s.vowel || doubled) {
-      let vowel = doubled ? 'e' : s.vowel
+    if (s.vowel) {
+      let vowel = s.vowel
       if (tradition === 'ashkenazic') {
         // Hashem stays "ha-shem" in an Ashkenazi reading too
         if (s.atom.vowel === 'tzere' && plain(part) !== 'השם') vowel = 'ey'
@@ -100,8 +95,6 @@ function syllables(segments, { tradition, kamatz, part }) {
       out.push({ onset: consonant, vowel, coda: '', atom: s.atomIndex })
       return
     }
-    // Yud after "e" or "i" is silent (אַחֶיךָ = a-khe-kha)
-    if (consonant === 'y' && last && !last.coda && /[ei]$/.test(last.vowel)) return
     if (last) last.coda += consonant
     else out.push({ onset: consonant, vowel: '', coda: '', atom: s.atomIndex })
   })

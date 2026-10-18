@@ -129,6 +129,14 @@ function mergeVowelCarriers(atoms) {
       continue
     }
 
+    // Segol + silent yud mid-word, as in the plural suffixes ֶיךָ / ֶיהָ
+    // (אַחֶיךָ "achecha", דְּרָכֶיהָ "deracheha"). Some readers say "ey"
+    // ("acheycha"), which grading accepts (yudAfter, see hebrewScoring).
+    if (a.letter === 'י' && !a.vowel && !a.dagesh && prev?.vowel === 'segol' && i < atoms.length - 1) {
+      prev.yudAfter = true
+      continue
+    }
+
     // ָיו suffix ("his"): the yud is silent and the vav is "v" — אֵלָיו "elav",
     // יָדָיו "yadav" (not "elayv")
     const next = atoms[i + 1]
@@ -164,6 +172,11 @@ export function determineShevaType(atoms, index) {
 
   // S4: under the first of two identical consecutive letters (הִנְנִי "hineni")
   if (next?.letter === atom.letter) return 'na'
+
+  // S7: under a doubled letter (dagesh chazak after a vowel): strictly vocal,
+  // as the doubling opens a syllable (הַמְּלָכִים "hamelachim"), but many readers
+  // say it silent ("hamlachim"), so accept either.
+  if (hasDageshChazak(atom) && prev?.vowel) return 'either'
 
   // After a qamats the sheva follows the qamats type: katan closes the syllable
   // (חָכְמָה "chochma" — nach); without a meteg we can't tell, so either is fine.

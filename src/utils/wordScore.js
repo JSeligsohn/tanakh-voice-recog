@@ -8,10 +8,13 @@
 // with any mistake also drops to 80% of that, so it can't score above 80 — a
 // misread word should stand apart from a correct one, not land at 90-something.
 //
-//   - A wrong consonant or vowel (including a skipped syllable's sounds) is a
-//     mistake. Accepted variants (e.g. Ashkenazic kamatz as "a") count as right.
-//   - A slip with no wrong sound — an extra sound, a held vowel, a stutter, the
-//     word read out of place — is also one mistake.
+//   - Each wrong or missing sound is a mistake: a skipped syllable is one for
+//     each of its sounds. Accepted variants (e.g. Ashkenazic kamatz as "a")
+//     count as right.
+//   - Each slip — an extra sound, a held vowel, a stutter, the word read out
+//     of place — is also one mistake.
+//   The mistakes are the ones the grader lists for each syllable (its issues),
+//   so the score, the word's label and its notes all count the same things.
 //   - A skipped word scores 0. A word never goes below 0, so neither does the verse.
 
 // A word with any mistake keeps this share of its sound score.
@@ -31,20 +34,30 @@ export function wordScoreOf(w) {
 
   let sounds = 0
   let soundsRight = 0
-  let mistakes = w.errorType === 'OutOfOrder' ? 1 : 0
   for (const p of w.phonemes) {
     const parts = soundsOf(p)
     sounds += parts.length
-    const wrong = parts.filter(s => !s.correct).length
-    soundsRight += parts.length - wrong
-    mistakes += wrong
-    // A note with no wrong sound is a slip — except an out-of-order word's
-    // own note, already counted above.
-    if (p.note && wrong === 0 && w.errorType !== 'OutOfOrder') mistakes++
+    soundsRight += parts.filter(s => s.correct).length
   }
+  const mistakes = mistakesOf(w)
   const soundShare = sounds ? Math.max(0, (sounds - mistakes) / sounds) : (mistakes ? 0 : 1)
   const score = Math.round(100 * soundShare * (mistakes ? MISTAKE_WORD_FACTOR : 1))
   return { word: w.word, score, sounds, soundsRight, mistakes, skipped: false }
+}
+
+// A word's mistakes: the ones its syllables list (issues: one per wrong or
+// missing sound, and one per slip). Readings saved before mistakes were listed
+// count each wrong sound, and a note with no wrong sound as one slip.
+function mistakesOf(w) {
+  if (w.phonemes.some(p => p.issues)) return w.phonemes.reduce((n, p) => n + (p.issues?.length ?? 0), 0)
+  let mistakes = w.errorType === 'OutOfOrder' ? 1 : 0
+  for (const p of w.phonemes) {
+    const wrong = soundsOf(p).filter(s => !s.correct).length
+    mistakes += wrong
+    // An out-of-order word's own note is already counted above
+    if (p.note && wrong === 0 && w.errorType !== 'OutOfOrder') mistakes++
+  }
+  return mistakes
 }
 
 // The kinds of mistake a graded syllable can carry (its `issues`), as a word's
@@ -59,16 +72,25 @@ const ISSUE_LABELS = {
   'out-of-order': 'Out of order',
 }
 
+// Several of one kind: "2 missing sounds"
+const ISSUE_PLURALS = {
+  'wrong-letter': 'wrong letters',
+  'wrong-vowel': 'wrong vowels',
+  'missing-sound': 'missing sounds',
+  'extra-sound': 'extra sounds',
+}
+
 // A graded word's label: "Correct", "Skipped", the kind of its one mistake
-// ("Wrong vowel"), or how many mistakes it has ("2 mistakes"); the notes say
-// what each one was. Readings saved before mistakes had kinds get a count.
+// ("Wrong vowel"), or how many mistakes it has ("2 missing sounds", "3
+// mistakes") — the same mistakes the score counts, and the notes describe.
+// Readings saved before mistakes had kinds get a plain count.
 export function wordLabel(w) {
   if (w.errorType === 'Omission') return 'Skipped'
-  const issues = w.phonemes.flatMap(p => p.issues ?? [])
-  const known = w.phonemes.some(p => p.issues)
-  const count = known ? issues.length : wordScoreOf(w).mistakes
+  const count = mistakesOf(w)
   if (count === 0) return 'Correct'
-  if (count === 1 && known) return ISSUE_LABELS[issues[0]] ?? '1 mistake'
+  const kinds = [...new Set(w.phonemes.flatMap(p => p.issues ?? []))]
+  if (kinds.length === 1 && count === 1) return ISSUE_LABELS[kinds[0]] ?? '1 mistake'
+  if (kinds.length === 1 && ISSUE_PLURALS[kinds[0]]) return `${count} ${ISSUE_PLURALS[kinds[0]]}`
   return count === 1 ? '1 mistake' : `${count} mistakes`
 }
 

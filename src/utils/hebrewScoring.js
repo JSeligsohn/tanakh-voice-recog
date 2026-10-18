@@ -4,7 +4,7 @@
 import { tokenizeWord, getExpectedPhonetic } from './hebrewRules.js'
 import { syllableRight, wordScoreOf } from './wordScore.js'
 import {
-  describe, describeHeardVowel, latinToSay, consonantSay, vowelSay, syllableSay,
+  describe, describeHeardVowel, latinToSay, consonantSay, vowelSay,
   vowelSignName, letterLabel, soundOfOtherLetter,
 } from './soundGuide.js'
 
@@ -393,6 +393,14 @@ function alignSyllables(syllables, studentPhonetic) {
           heardConsonant = laterMatch
           consumed += skip + laterMatch.length
           consonantMatched = true
+        } else if (remaining[0] === 'y' && /[aeiou]/.test(remaining[1] ?? '') &&
+                   !(nextSyl && nextSyllableCanStartAt(remaining, nextSyl))) {
+          // "y" before a vowel is a consonant, not a vowel (unless it's the
+          // next letter's: "veyeh" for וֶהְיֵה). Right after an "i" it's the
+          // glide into the next vowel: "aviyo" for אָבִיךָ is "avi-o", with the
+          // "kh" left out. Otherwise this letter was said as "y".
+          if (student[pos - 1] !== 'i') heardConsonant = 'y'
+          consumed += 1
         } else {
           // True mismatch — capture the digraph-aware consonant unit for reporting
           heardConsonant = identifyConsonantUnit(remaining)
@@ -567,9 +575,7 @@ function syllableNote(m, tradition, shevaMode) {
     return RIGHT // benign extra vowel: not a mistake
   }
 
-  if (m.status === 'missing') {
-    return issue('missing-sound', `Skipped — the "${syllableSay(m, tradition)}" sound of ${m.display} wasn't heard.`)
-  }
+  if (m.status === 'missing') return skippedNote(m, tradition)
 
   if (m.status === 'genuvah-reversed') {
     return issue('wrong-vowel', `Patach genuvah — the "ah" is said before the final ${m.atom.letter}, not after it. You said "${latinToSay(m.heard)}".`)
@@ -608,6 +614,17 @@ function syllableNote(m, tradition, shevaMode) {
   return RIGHT
 }
 
+// A syllable left out: one missing sound for each sound it has, as the score
+// counts them — "Skipped ךָ — its "kh" and "aw" weren't heard."
+function skippedNote(m, tradition) {
+  const sounds = [m.consonant && consonantSay(m.consonant), m.vowel && vowelSay(m, tradition)].filter(Boolean)
+  const said = sounds.map(x => `"${x}"`).join(' and ')
+  return {
+    note: `Skipped ${m.display} — its ${said} ${sounds.length > 1 ? "weren't" : "wasn't"} heard.`,
+    issues: sounds.map(() => 'missing-sound'),
+  }
+}
+
 // "The vowel is chirik: "ee" as in "see" — you said "oh" as in "go"."
 function vowelNote(m, tradition) {
   const heard = describeHeardVowel(m.heardVowel)
@@ -637,7 +654,12 @@ function buildMismatchNote(m, tradition) {
     kind = 'extra-sound'
     note = `${L} is silent here — you said ${describe(heard)}.`
   } else if (!heard) {
-    return issue('missing-sound', `Skipped — the "${syllableSay(m, tradition)}" sound of ${m.display} wasn't heard.`)
+    // Nothing heard at all: the whole syllable was left out
+    if (m.vowel && !m.vowelMatched && !m.heardVowel) return skippedNote(m, tradition)
+    kind = 'missing-sound'
+    note = m.vowel && m.vowelMatched
+      ? `The "${expected}" of ${m.display} wasn't heard — only its vowel, ${describe(vowelSay(m, tradition))}.`
+      : `The "${expected}" of ${m.display} wasn't heard.`
   } else {
     kind = 'wrong-letter'
     const other = soundOfOtherLetter(m.atom, heard, tradition)

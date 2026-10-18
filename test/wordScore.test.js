@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { psukim } from '../src/data/psukim.js'
 import { assessManual } from '../src/services/manualAssessment.js'
-import { computeWordScore, wordLabel } from '../src/utils/wordScore.js'
+import { computeWordScore, wordLabel, wordScoreOf } from '../src/utils/wordScore.js'
 
 const score = (pasukIdx, tradition, heard) =>
   computeWordScore(assessManual(psukim[pasukIdx].text, heard, { tradition }).words)
@@ -82,5 +82,24 @@ test('word label names the one mistake, counts several, and marks repeats', () =
   assert.deepEqual(label('vayomer hashem hashem el avram'), ['Correct', 'Repeated', 'Correct', 'Correct'])
   assert.deepEqual(label('vayomer el avram'), ['Correct', 'Skipped', 'Correct', 'Correct'])
   assert.equal(label('vayomar hasham el avram')[1], 'Wrong vowel')
-  assert.match(label('vuyomar hashem el avram')[0], /^2 mistakes$/)
+  assert.equal(label('vuyomar hashem el avram')[0], '2 wrong vowels')
+  assert.equal(label('vayomar hasem el avram').slice(0, 2).join(), 'Wrong vowel,Wrong letter')
+})
+
+test('word label counts the mistakes the score counts, for new and saved readings', () => {
+  // לְךָ read "lo": a wrong sheva na, and ךָ skipped — its "kh" and "aw" both
+  // missing — is three mistakes, as the score counts them
+  const { words } = assessManual(psukim[0].text, 'vayomer hashem el avram lech lo', { tradition: 'ashkenazic' })
+  const lecha = words[5]
+  assert.equal(wordLabel(lecha), '3 mistakes')
+  assert.equal(wordScoreOf(lecha).mistakes, 3)
+  const saved = { ...lecha, phonemes: lecha.phonemes.map(p => ({ ...p, issues: undefined })) }
+  assert.equal(wordLabel(saved), '3 mistakes')
+})
+
+test('"aviyo" for אָבִיךָ: the "kh" left out, the vowel right', () => {
+  const { words } = assessManual(psukim[0].text, 'vayomer hashem el avram lech lecha meartsecha umimoladtecha umibeit aviyo', { tradition: 'ashkenazic' })
+  const avicha = words[9]
+  assert.equal(wordLabel(avicha), 'Missing sound')
+  assert.deepEqual(avicha.phonemes.map(p => p.note).filter(Boolean), ['The "kh" of ךָ wasn\'t heard — only its vowel, "aw" as in "law".'])
 })

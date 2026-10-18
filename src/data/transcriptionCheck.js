@@ -42,6 +42,12 @@ export const checkItems = [
   { id: 'c-hashem', group: 'Consonants', word: 'הַשֵּׁם', sayAs: '"ha-SHEM"', expect: 'hashem', intent: 'correct', trad: 'sephardic' },
   { id: 'c-hasem-err', group: 'Consonants', word: 'הַשֵּׁם', sayAs: 'Wrong (shin as s): "ha-SEM"', expect: 'hasem', intent: 'error', trad: 'sephardic' },
   { id: 'c-yishrael-err', group: 'Consonants', word: 'יִשְׂרָאֵל', sayAs: 'Wrong (sin as sh): "yiSH-rah-el"', expect: 'yishrael', intent: 'error', trad: 'sephardic' },
+  { id: 'c-saray', group: 'Consonants', word: 'שָׂרַי', sayAs: '"sah-RAI" (sin)', expect: 'saray', accept: ['sarai'], intent: 'correct', trad: 'sephardic' },
+  { id: 'c-sharay-err', group: 'Consonants', word: 'שָׂרַי', sayAs: 'Wrong (sin as sh): "SHAH-rai"', expect: 'sharay', accept: ['sharai'], intent: 'error', trad: 'sephardic' },
+  { id: 'c-asher', group: 'Consonants', word: 'אֲשֶׁר', sayAs: '"ah-SHER" (shin)', expect: 'asher', intent: 'correct', trad: 'sephardic' },
+  { id: 'c-aser-err', group: 'Consonants', word: 'אֲשֶׁר', sayAs: 'Wrong (shin as s): "ah-SER"', expect: 'aser', intent: 'error', trad: 'sephardic' },
+  { id: 'c-asu', group: 'Consonants', word: 'עָשׂוּ', sayAs: '"ah-SOO" (sin)', expect: 'asu', intent: 'correct', trad: 'sephardic' },
+  { id: 'c-ashu-err', group: 'Consonants', word: 'עָשׂוּ', sayAs: 'Wrong (sin as sh): "ah-SHOO"', expect: 'ashu', intent: 'error', trad: 'sephardic' },
   { id: 'c-bara', group: 'Consonants', word: 'בָּרָא', sayAs: '"bah-RAH"', expect: 'bara', intent: 'correct', trad: 'sephardic' },
   { id: 'c-vara-err', group: 'Consonants', word: 'בָּרָא', sayAs: 'Wrong (בּ as v): "VAH-rah"', expect: 'vara', intent: 'error', trad: 'sephardic' },
   { id: 'c-av', group: 'Consonants', word: 'אָב', sayAs: '"AHV"', expect: 'av', intent: 'correct', trad: 'sephardic' },
@@ -74,7 +80,8 @@ export const checkItems = [
 // Each verse item:
 //   pasukIdx — verse in psukim.js
 //   trad     — tradition to read and grade in
-//   plants   — deliberate mistakes: { index (word in the verse), sayAs, heard }
+//   plants   — deliberate mistakes: { index (graded word in the verse — each
+//              part of a maqef phrase counts, see splitVerseWords), sayAs, heard }
 //              where `heard` is the transcription a faithful model would write
 // Words without a plant must grade clean; planted words must be flagged.
 
@@ -84,8 +91,8 @@ export const verseItems = [
     id: 'vs-12-1-errors', pasukIdx: 0, trad: 'sephardic',
     plants: [
       { index: 1, sayAs: 'ha-SEM (shin as s)', heard: 'hasem' },
-      { index: 6, sayAs: 'oo-mi-VAYT (בּ as v)', heard: 'umivet' },
-      { index: 10, sayAs: 'ar-EH-kha (כּ as ch)', heard: 'arecha' },
+      { index: 8, sayAs: 'oo-mi-VAYT (בּ as v)', heard: 'umivet' },
+      { index: 13, sayAs: 'ar-EH-kha (כּ as ch)', heard: 'arecha' },
     ],
   },
   { id: 'vs-shema-clean', pasukIdx: 5, trad: 'ashkenazic', plants: [] },
@@ -101,16 +108,16 @@ export const verseItems = [
     id: 'vs-12-4-errors', pasukIdx: 3, trad: 'sephardic',
     plants: [
       { index: 3, sayAs: 'di-VER (בּ as v)', heard: 'diver' },
-      { index: 10, sayAs: 'ben ha-MESH (ח as h)', heard: 'benhamesh' },
-      { index: 11, sayAs: 'sho-NEEM (kamatz as o in Sephardic)', heard: 'shonim' },
+      { index: 11, sayAs: 'ha-MESH (ח as h)', heard: 'hamesh' },
+      { index: 12, sayAs: 'sho-NEEM (kamatz as o in Sephardic)', heard: 'shonim' },
     ],
   },
   { id: 'vs-az-yashir-clean', pasukIdx: 8, trad: 'ashkenazic', plants: [] },
   {
     id: 'vs-az-yashir-errors', pasukIdx: 8, trad: 'ashkenazic',
     plants: [
-      { index: 2, sayAs: 'oo-BNAY (ב as b)', heard: 'ubney' },
-      { index: 5, sayAs: 'ha-ZOT (tav as t in Ashkenazic)', heard: 'hazot' },
+      { index: 3, sayAs: 'oo-BNAY (ב as b)', heard: 'ubney' },
+      { index: 7, sayAs: 'ha-ZOT (tav as t in Ashkenazic)', heard: 'hazot' },
     ],
   },
 ]

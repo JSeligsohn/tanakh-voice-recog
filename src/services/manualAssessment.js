@@ -3,11 +3,13 @@
 // burning API credits.
 
 import { scoreWords } from '../utils/hebrewScoring.js'
+import { splitVerseWords } from '../utils/hebrewRules.js'
 import { applyWordScore } from '../utils/wordScore.js'
 import { alignByDP, tokenizePhonetic, applyAlignmentNotes } from '../utils/phoneticAlignment.js'
 
 export function assessManual(referenceText, typedPhonetic, settings = {}) {
-  const referenceWords = referenceText.split(/\s+/).filter(Boolean)
+  // Maqef-joined words are graded one by one (אֶל־אַבְרָם → אֶל־, אַבְרָם)
+  const referenceWords = splitVerseWords(referenceText)
   const studentTokens = tokenizePhonetic(typedPhonetic)
   const alignment = alignByDP(referenceWords, studentTokens, settings)
   const { heardByRef } = alignment

@@ -2,7 +2,8 @@
 // Aligns a list of student phonetic tokens against the reference words, allowing
 // omissions, insertions, and 1-3 student tokens combining for a single ref word.
 
-import { tokenizeWord, getExpectedPhonetic } from './hebrewRules.js'
+import { tokenizeWord, getExpectedPhonetic, joinsNext } from './hebrewRules.js'
+import { splitHeardAcrossWords } from './hebrewScoring.js'
 
 function levenshtein(a, b) {
   const m = a.length, n = b.length
@@ -46,8 +47,10 @@ function dedupeStutters(rawTokens) {
 
 // Find the best mapping of student tokens onto reference words, allowing
 // omissions (skipped reference words), insertions (extra spoken words), and
-// 1-3 student tokens combining for one reference word (for maqef-joined words
-// and other cases where the speaker's tokenization doesn't match Hebrew's).
+// 1-4 student tokens combining for one reference word (where the speaker's
+// tokenization doesn't match Hebrew's). Maqef-joined words (אֶל־, אַבְרָם —
+// see splitVerseWords) are often heard as one token ("elavram"), so a run of
+// them can also match together, then the heard sounds are split between them.
 // Returns { heardByRef, stutters, outOfOrder } where stutters[refIdx] is true if
 // any of the matched tokens for that ref were repeated by the student, and
 // outOfOrder[refIdx] is true if the word was recovered from a different position
@@ -68,6 +71,7 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
   dp[0][0] = 0
 
   const SKIP_REF = -0.3
+  const MAX_JOINED = 4 // longest run of maqef-joined words matched together
   const SKIP_STUDENT = -0.4
   // Don't allow a match below this similarity — better to skip those tokens
   // as insertions/noise than to force a bogus assignment onto a later ref.
@@ -121,6 +125,19 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
         }
       }
 
+      // A run of maqef-joined words heard together: scored as that many
+      // separate matches would be, so separate tokens still win a tie
+      for (let r = 2; r <= MAX_JOINED && i >= r && joinsNext(referenceWords[i - r]); r++) {
+        const exp = expected.slice(i - r, i).join('')
+        for (let span = 1; span <= 4 && span <= j; span++) {
+          if (dp[i - r][j - span] === NEG) continue
+          const sim = similarity(exp, studentTokens.slice(j - span, j).join(''))
+          if (sim < MIN_SIM) continue
+          const score = dp[i - r][j - span] + r * (2 * sim - 1)
+          if (score > best) { best = score; bestMove = { type: 'match', span, words: r } }
+        }
+      }
+
       if (best > NEG) {
         dp[i][j] = best
         back[i][j] = bestMove
@@ -136,7 +153,17 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
   while (i > 0 || j > 0) {
     const mv = back[i][j]
     if (!mv) break
-    if (mv.type === 'match') {
+    if (mv.type === 'match' && mv.words) {
+      const first = i - mv.words
+      const heard = studentTokens.slice(j - mv.span, j).join('')
+      // No spanByRef: stray-prefix moves need one word per span of tokens
+      splitHeardAcrossWords(referenceWords.slice(first, i), heard, settings)
+        .forEach((part, k) => { heardByRef[first + k] = part })
+      for (let k = j - mv.span; k < j; k++) {
+        if (stutterMap[k] > 0) { stutters[first] = true; break }
+      }
+      i = first; j -= mv.span
+    } else if (mv.type === 'match') {
       const span = mv.span
       heardByRef[i - 1] = studentTokens.slice(j - span, j).join('')
       spanByRef[i - 1] = [j - span, j]
@@ -153,7 +180,8 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
     }
   }
   moveStrayPrefixes(expected, studentTokens, heardByRef, spanByRef)
-  const outOfOrder = recoverSwappedWords(expected, studentTokens, heardByRef, skippedTokens)
+  const unassigned = attachStrayPrefixes(expected, studentTokens, heardByRef, spanByRef, skippedTokens)
+  const outOfOrder = recoverSwappedWords(expected, studentTokens, heardByRef, unassigned)
   return { heardByRef, stutters, outOfOrder }
 }
 
@@ -181,6 +209,22 @@ function moveStrayPrefixes(expected, studentTokens, heardByRef, spanByRef) {
     spanByRef[r] = [span[0], span[1] - 1]
     spanByRef[r + 1] = [span[1] - 1, next[1]]
   }
+}
+
+// A prefix syllable said on its own right before a word ("ka asher" —
+// כַּאֲשֶׁר read for אֲשֶׁר) is often left out by the DP as an extra token, which
+// would hide the mistake. It belongs to that word, unless the word itself
+// starts with it (a false start, "ha hashem"). Mutates heardByRef and
+// spanByRef; returns the tokens still unassigned.
+function attachStrayPrefixes(expected, studentTokens, heardByRef, spanByRef, skippedTokens) {
+  return skippedTokens.filter(({ j, refPos }) => {
+    const span = spanByRef[refPos]
+    const token = studentTokens[j]
+    if (!span || span[0] !== j + 1 || !PREFIX_SYLLABLE.test(token) || expected[refPos].startsWith(token)) return true
+    heardByRef[refPos] = token + heardByRef[refPos]
+    spanByRef[refPos] = [j, span[1]]
+    return false
+  })
 }
 
 // The DP is strictly forward, so a word read in the wrong position ("avram el"

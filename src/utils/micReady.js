@@ -15,6 +15,18 @@
 // the audio, so we fall back to the old fixed wait instead of hanging.
 const FALLBACK_WAIT_MS = 250
 
+// Microphone settings for readings. The browser's noise suppression is off:
+// it treats hiss as noise, and dulling the hiss of "s" and "sh" blurs שׂ (sin)
+// and שׁ (shin) for the transcriber. Echo cancellation is off too (nothing
+// plays while recording); automatic gain stays on for quiet readers.
+export const MIC_CONSTRAINTS = {
+  audio: { noiseSuppression: false, echoCancellation: false, autoGainControl: true, channelCount: 1 },
+}
+
+// A generous bitrate so compression keeps the high frequencies that tell
+// "s" from "sh"
+export const RECORDER_OPTIONS = { audioBitsPerSecond: 128000 }
+
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 export async function waitForAudio(stream, { timeoutMs = 3000, pollMs = 25 } = {}) {

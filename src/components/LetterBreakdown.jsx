@@ -8,21 +8,32 @@ const ALEPH_BET = ['א','ב','ג','ד','ה','ו','ז','ח','ט','י','כ','ל','
 const FINAL_FORMS = { 'ך':'כ', 'ם':'מ', 'ן':'נ', 'ף':'פ', 'ץ':'צ' }
 const baseLetter = (l) => FINAL_FORMS[l] ?? l
 const alephBetIndex = (l) => {
-  const idx = ALEPH_BET.indexOf(baseLetter(l))
+  const idx = ALEPH_BET.indexOf(baseLetter(l[0]))
   return idx === -1 ? ALEPH_BET.length : idx
 }
 
+// A letter's row. Shin and sin are different sounds, so each has its own row
+// (שׁ "sh", שׂ "s"); the sound expected tells them apart.
+const letterKey = ({ letter, sound }) =>
+  letter === 'ש' ? (sound === 's' ? 'שׂ' : 'שׁ') : baseLetter(letter)
+
 // Display order + labels for vowels, roughly by openness.
-const VOWEL_ORDER = ['patah','qamats','qamats-katan','hataf-patah','hataf-qamats','segol','tzere','hataf-segol','hiriq','holam','qubuts','shuruk','sheva']
+// Sheva na and sheva nach are separate rows when shevas are graded; 'sheva'
+// is the single row of readings saved before that.
+const VOWEL_ORDER = ['patah','qamats','qamats-katan','hataf-qamats','segol','tzere','hataf-segol','hiriq','holam','qubuts','shuruk','sheva-na','sheva-nach','sheva']
 const VOWEL_LABEL = {
-  'patah':'Patach', 'qamats':'Kamatz', 'qamats-katan':'Kamatz katan', 'hataf-patah':'Hataf patach', 'hataf-qamats':'Hataf kamatz',
+  'patah':'Patach', 'qamats':'Kamatz', 'qamats-katan':'Kamatz katan', 'hataf-qamats':'Hataf kamatz',
   'segol':'Segol', 'tzere':'Tzere', 'hataf-segol':'Hataf segol', 'hiriq':'Chirik',
-  'holam':'Cholam', 'qubuts':'Kubutz', 'shuruk':'Shuruk', 'sheva':'Sheva',
+  'holam':'Cholam', 'qubuts':'Kubutz', 'shuruk':'Shuruk',
+  'sheva-na':'Sheva na', 'sheva-nach':'Sheva nach', 'sheva':'Sheva',
 }
+// Hataf patach is read as patach and shares its row (also in readings saved
+// before the grader folded it in)
+const vowelKey = (name) => (name === 'hataf-patah' ? 'patah' : name)
 // Combining nikud marks, displayed on a dotted-circle carrier (U+25CC) so the
 // vowel sign is visible on its own. Shuruk/holam-male are shown on their vav.
 const VOWEL_MARK = {
-  'sheva':'ְ', 'hataf-segol':'ֱ', 'hataf-patah':'ֲ', 'hataf-qamats':'ֳ',
+  'sheva':'ְ', 'sheva-na':'ְ', 'sheva-nach':'ְ', 'hataf-segol':'ֱ', 'hataf-qamats':'ֳ',
   'hiriq':'ִ', 'tzere':'ֵ', 'segol':'ֶ', 'patah':'ַ', 'qamats':'ָ', 'qamats-katan':'ָ',
   'holam':'ֹ', 'qubuts':'ֻ',
 }
@@ -67,13 +78,16 @@ function aggregate(wordResults) {
       const b = syl.breakdown
       if (b) {
         // Rules/Manual engine: per-letter breakdown. Silent letters (final ה,
-        // silent א/ע, sheva nach) carry a breakdown with no consonant AND no
-        // vowel — they make no audible sound, so they're skipped, not counted.
+        // silent א/ע) carry a breakdown with no consonant AND no vowel — they
+        // make no sound, so they're skipped, not counted. A graded sheva nach
+        // does count, as a vowel whose right sound is silence.
         if (b.consonant) {
-          consonants.push({ key: baseLetter(b.consonant.letter), sound: b.consonant.sound, correct: b.consonant.correct })
+          consonants.push({ key: letterKey(b.consonant), sound: b.consonant.sound, correct: b.consonant.correct })
         }
         if (b.vowel) {
-          vowels.push({ key: b.vowel.name, sound: b.vowel.sound, correct: b.vowel.correct })
+          // A sheva nach's sound is silence
+          const sound = b.vowel.name === 'sheva-nach' ? 'silent' : b.vowel.sound
+          vowels.push({ key: vowelKey(b.vowel.name), sound, correct: b.vowel.correct })
         }
       } else if (syl.phoneme) {
         // Azure / OpenAI (LLM): no per-letter breakdown — fall back to whole

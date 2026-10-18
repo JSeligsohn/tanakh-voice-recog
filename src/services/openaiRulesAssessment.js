@@ -7,6 +7,7 @@
 // genuinely good at — listening and transliterating sounds.
 
 import { scoreWords } from '../utils/hebrewScoring.js'
+import { splitVerseWords } from '../utils/hebrewRules.js'
 import { applyWordScore } from '../utils/wordScore.js'
 import { alignByDP, tokenizePhonetic, applyAlignmentNotes } from '../utils/phoneticAlignment.js'
 import { callOpenAIAudio } from './openaiProxy.js'
@@ -44,7 +45,8 @@ export async function assessWithOpenAIRules(audioBlob, referenceText, settings =
 // Grades a phonetic transcription against the verse with our rules engine.
 // Also used by scripts/generate-listen-audio.mjs to check the Listen readings.
 export function gradeTranscription(transcription, referenceText, settings = {}, { model = null, usage = null } = {}) {
-  const referenceWords = referenceText.split(/\s+/).filter(Boolean)
+  // Maqef-joined words are graded one by one (אֶל־אַבְרָם → אֶל־, אַבְרָם)
+  const referenceWords = splitVerseWords(referenceText)
 
   // Tokenize the model's transcription, then let DP alignment figure out which
   // tokens correspond to which reference words.

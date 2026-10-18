@@ -8,10 +8,11 @@ import { speakHebrew } from './services/tts'
 import { listenUrl, playRecording } from './services/listen'
 import { isSpeechAvailable } from './services/azureAuth'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
+import { splitVerseWords } from './utils/hebrewRules'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
 import VoiceLab from './components/VoiceLab'
-import { waitForAudio } from './utils/micReady'
+import { waitForAudio, MIC_CONSTRAINTS, RECORDER_OPTIONS } from './utils/micReady'
 import { checkRecording } from './utils/recordingCheck'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
@@ -36,6 +37,9 @@ function scoreLabel(score, errorType) {
   if (score >= 60) return 'Needs work'
   return 'Incorrect'
 }
+
+// A verse with each maqef part as its own word, as the rules engine grades it
+const gradedWordsText = text => splitVerseWords(text).join(' ')
 
 function WordChip({ word, score, errorType, isSelected, onClick, showScore }) {
   const color = scoreColor(score, errorType)
@@ -354,14 +358,14 @@ export default function App() {
     blobPromiseRef.current = new Promise(resolve => { resolveBlobPromise = resolve })
 
     const t0 = performance.now()
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
     const tStream = performance.now()
     sharedStreamRef.current = stream
 
     const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
       .find(t => MediaRecorder.isTypeSupported(t)) || ''
 
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    const recorder = new MediaRecorder(stream, { ...RECORDER_OPTIONS, ...(mimeType ? { mimeType } : {}) })
     recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
     recorder.onstop = () => {
       const blob = audioChunksRef.current.length > 0
@@ -536,7 +540,8 @@ export default function App() {
       const assess = useRulesEngine ? assessWithOpenAIRules : assessWithOpenAI
       const checkPromise = runRecordingCheck(blob) // runs alongside the API call
       const { words, scores, rawSegment } = await assess(blob, pasuk.text, { tradition, shevaMode })
-      const reconciled = reconcileWords(pasuk.text, words)
+      // The rules engine grades each maqef part as its own word
+      const reconciled = reconcileWords(useRulesEngine ? gradedWordsText(pasuk.text) : pasuk.text, words)
       const audioUrl = URL.createObjectURL(blob)
       const check = await checkPromise
       setRecordingCheck(check)
@@ -569,7 +574,7 @@ export default function App() {
     setListenPhase('idle')
     cancelTtsRef.current?.()
     const { words, scores, rawSegment } = assessManual(pasuk.text, manualInput, { tradition, shevaMode })
-    const reconciled = reconcileWords(pasuk.text, words)
+    const reconciled = reconcileWords(gradedWordsText(pasuk.text), words)
     setCurrentRawSegments([rawSegment])
     addToHistory(reconciled, scores, null, [rawSegment])
     setPhase('done')
@@ -846,7 +851,8 @@ export default function App() {
                         onClick={() => handleWordClick(i)}
                         showScore
                       />
-                      {i < displayWords.length - 1 ? ' ' : null}
+                      {/* A maqef part stays joined to the next word, as in the verse */}
+                      {i < displayWords.length - 1 && !w.word.endsWith('־') ? ' ' : null}
                     </span>
                   ))
                 // Word joiner after each maqef so a joined phrase never wraps mid-way
@@ -938,7 +944,6 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <span className="pasuk-translation">{pasuk.translation}</span>
             </div>
           </div>
 

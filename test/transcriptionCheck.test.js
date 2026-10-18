@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { scoreWordAgainstTranscription } from '../src/utils/hebrewScoring.js'
-import { tokenizeWord, getExpectedPhonetic } from '../src/utils/hebrewRules.js'
+import { tokenizeWord, getExpectedPhonetic, splitVerseWords } from '../src/utils/hebrewRules.js'
 import { assessManual } from '../src/services/manualAssessment.js'
 import { psukim } from '../src/data/psukim.js'
 import { checkItems, verseItems } from '../src/data/transcriptionCheck.js'
@@ -39,7 +39,7 @@ test('verse item ids are unique and distinct from word items', () => {
 for (const item of verseItems) {
   test(`${item.id}: intended reading flags exactly the planted words (${item.trad})`, () => {
     const { text } = psukim[item.pasukIdx]
-    const words = text.split(/\s+/).filter(Boolean)
+    const words = splitVerseWords(text)
     const plantAt = Object.fromEntries(item.plants.map(p => [p.index, p.heard]))
     const transcription = words
       .map((w, i) => plantAt[i] ?? getExpectedPhonetic(tokenizeWord(w), { tradition: item.trad }).fullPhonetic)

@@ -10,7 +10,8 @@ import { transcribeAudio } from '../services/openaiRulesAssessment'
 import { assessManual } from '../services/manualAssessment'
 import { normalizeStudent, scoreWordAgainstTranscription } from '../utils/hebrewScoring'
 import { saveRecording, loadAllRecordings } from '../utils/recordingStore'
-import { waitForAudio } from '../utils/micReady'
+import { waitForAudio, MIC_CONSTRAINTS, RECORDER_OPTIONS } from '../utils/micReady'
+import { splitVerseWords } from '../utils/hebrewRules'
 
 const RESULTS_KEY = 'tanakh-transcription-check-results'
 const RUN_ALL_CONCURRENCY = 3
@@ -92,10 +93,10 @@ export default function TranscriptionCheck() {
     setError('')
     setStartingId(item.id)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
       const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
         .find(t => MediaRecorder.isTypeSupported(t)) || ''
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      const recorder = new MediaRecorder(stream, { ...RECORDER_OPTIONS, ...(mimeType ? { mimeType } : {}) })
       const chunks = []
       recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
       recorder.onstop = async () => {
@@ -318,7 +319,7 @@ export default function TranscriptionCheck() {
           const r = results[item.id]
           const v = r?.heard !== undefined ? evaluateVerse(item, r.heard) : null
           const p = psukim[item.pasukIdx]
-          const words = p.text.split(/\s+/).filter(Boolean)
+          const words = splitVerseWords(p.text)
           return (
             <div key={item.id} className="tc-item">
               <div className="tc-item-main">

@@ -51,19 +51,32 @@ const LONG_VOWELS = new Set(['qamats', 'tzere', 'holam', 'shuruk'])
 // Maqef-joined words (אֶל־אַבְרָם) are tokenized one component at a time so each
 // component keeps its own word-start and word-end: `wordStart` marks the first
 // atom of every component, `isFinal` the last, and `beforeMaqef` the last atom
-// of every component except the final one.
+// of every component followed by a maqef — including a lone component that
+// ends in one (אֶל־, as graded on its own; see splitVerseWords).
 
 export function tokenizeWord(word) {
   const parts = word.split(MAQEF).filter(Boolean)
+  const endsWithMaqef = word.trimEnd().endsWith(MAQEF)
   return parts.flatMap((part, pi) => {
     const atoms = tokenizeComponent(part)
     if (atoms.length > 0) {
       atoms[0].wordStart = true
-      if (pi < parts.length - 1) atoms[atoms.length - 1].beforeMaqef = true
+      if (pi < parts.length - 1 || endsWithMaqef) atoms[atoms.length - 1].beforeMaqef = true
     }
     return atoms
   })
 }
+
+// The words of a verse as they are graded: each part of a maqef-joined phrase
+// is its own word, and keeps its maqef so it still reads as joined
+// (אֶל־אַבְרָם → אֶל־, אַבְרָם).
+export function splitVerseWords(text) {
+  return text.split(/\s+/).filter(Boolean)
+    .flatMap(phrase => phrase.split(MAQEF).filter(Boolean).map((part, i, parts) => i < parts.length - 1 ? part + MAQEF : part))
+}
+
+// Does this graded word join the next one with a maqef?
+export const joinsNext = word => word.endsWith(MAQEF)
 
 function tokenizeComponent(word) {
   const raw = []

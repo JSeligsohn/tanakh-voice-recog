@@ -94,17 +94,44 @@ export const gradingCases = [
   { word: 'שְׁמֶךָ', heard: 'shmecha', flag: 'Sheva na', rule: 'sheva na dropped' },
   { word: 'בְּרֵאשִׁית', heard: 'bireshit', flag: 'Sheva na', rule: 'sheva na heard as "i"' },
   { word: 'הִנְנִי', heard: 'hinni', flag: 'Sheva na', rule: 'S4 sheva na dropped' },
-  { word: 'יִשְׂרָאֵל', heard: 'yiserael', flag: 'Extra "e"', rule: 'sheva nach voiced' },
-  { word: 'יִשְׂרָאֵל', heard: 'yiserael', flag: 'Sheva nach', rule: 'voiced sheva nach named as such',
-    todo: 'flagged, but the note blames the next letter ("Extra e inserted before ר")' },
+  { word: 'יִשְׂרָאֵל', heard: 'yiserael', flag: 'Sheva nach should be silent', notes: 1, rule: 'voiced sheva nach named as such' },
+  { word: 'לֵךְ', heard: 'leche', flag: 'Sheva nach should be silent', notes: 1, rule: 'voiced word-final sheva nach' },
+  { word: 'וַאֲבָרֶכְךָ', heard: 'vaavarechcha', pass: true, rule: 'sheva nach kept silent' },
   { word: 'אֲנִי', heard: 'anii', flag: 'held too long', rule: 'vowel elongated' },
   { word: 'אַבְרָם', heard: 'avrami', flag: 'at the end of the word', rule: 'extra sound at the end' },
   { word: 'וַתַּהַר', heard: 'vatahr', flag: 'Vowel mismatch', rule: 'vowel dropped' },
 ]
 
 // Whole verses through Manual mode: word alignment across the verse.
-// expect maps reference word index → expected errorType (others must be 'None').
+// expect maps graded word index → expected errorType (others must be 'None').
+// Each part of a maqef-joined phrase is its own graded word.
 export const verseCases = [
+  {
+    text: 'אֶל־אַבְרָם', heard: 'elavram',
+    expect: {}, rule: 'maqef phrase heard as one token is split between its words',
+  },
+  {
+    text: 'אֶל־אַבְרָם', heard: 'el',
+    expect: { 1: 'Omission' }, rule: 'one word of a maqef phrase skipped',
+  },
+  {
+    text: 'אֶל־אַבְרָם', heard: 'elavrom',
+    expect: { 1: 'Mispronunciation' }, notes: { 1: 'Vowel mismatch' },
+    rule: 'a mistake in a maqef phrase is on its own word',
+  },
+  {
+    text: 'וְאֶת־כָּל־רְכוּשָׁם', heard: 'veetkolrechusham',
+    expect: {}, rule: 'three maqef-joined words heard as one token',
+  },
+  {
+    text: 'אֶת־שָׂרַי', heard: 'etsaray',
+    expect: {}, rule: 'ת then שׂ across the maqef is not צ',
+  },
+  {
+    text: 'אֶת־שָׂרַי', heard: 'etsharay',
+    expect: { 1: 'Mispronunciation' }, notes: { 1: 'שׂ (sin) should be "s"' },
+    rule: 'sin read as shin, across the maqef',
+  },
   {
     text: 'אֶל אַבְרָם', heard: 'avram el',
     expect: { 1: 'OutOfOrder' }, rule: 'adjacent words swapped',
@@ -127,7 +154,7 @@ export const verseCases = [
   },
   {
     text: 'אֶל־הָאָרֶץ אֲשֶׁר', heard: 'el ha arets ka asher',
-    expect: { 1: 'Mispronunciation' }, notes: { 1: 'Extra "k"' },
+    expect: { 2: 'Mispronunciation' }, notes: { 2: 'Extra "k"' },
     rule: 'an extra prefix syllable between words goes on the next word (כַּאֲשֶׁר for אֲשֶׁר)',
   },
   {

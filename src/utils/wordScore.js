@@ -1,8 +1,9 @@
 // Word-based score: the verse score for the rules-engine modes (OpenAI Rules, Manual).
 //
-// Every word is an equal share of the verse. A word is made of its sounds —
-// each consonant and each vowel (sheva included) — and is 100 only when all of
-// them are read correctly. Each mistake takes one sound's share off the word,
+// Every word is an equal share of the verse (each part of a maqef phrase is a
+// word). A word is made of its sounds — each consonant and each vowel, sheva
+// na included, and a sheva nach too when shevas are graded (kept silent is
+// right) — and is 100 only when all of them are read correctly. Each mistake takes one sound's share off the word,
 // so a mistake in a short word costs more of it than one in a long word. A word
 // with any mistake also drops to 80% of that, so it can't score above 80 — a
 // misread word should stand apart from a correct one, not land at 90-something.

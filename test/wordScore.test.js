@@ -16,7 +16,8 @@ const LECH_LECHA_4 = "vayelech avram ka'asher diber elav hashem vayelech ito lot
 test('a clean reading scores 100 with every word clean', () => {
   const r = score(3, 'sephardic', LECH_LECHA_4)
   assert.equal(r.score, 100)
-  assert.deepEqual([r.wordsClean, r.wordsTotal], [16, 16])
+  // 16 words, with בֶּן־חָמֵשׁ graded as two
+  assert.deepEqual([r.wordsClean, r.wordsTotal], [17, 17])
 })
 
 test('each mistake takes one sound\'s share off its word, and a misread word keeps 80% of that', () => {
@@ -32,10 +33,11 @@ test('each mistake takes one sound\'s share off its word, and a misread word kee
 
 test('a wrong vowel or extra sound counts against the word like a wrong letter', () => {
   const r = score(1, 'ashkenazic', 'veescha legoy gagol vavarechecha avagadla shomcha veyes brecha')
-  assert.deepEqual([r.soundsRight, r.soundsTotal, r.wordsClean], [43, 53, 1])
-  // וַאֲבָרֶכְךָ: one wrong vowel and one extra sound, 2 mistakes in 10 sounds → 8/10 × 0.8.
-  assert.equal(wordScores(r)['וַאֲבָרֶכְךָ'], 64)
-  assert.equal(r.score, 63)
+  assert.deepEqual([r.soundsRight, r.soundsTotal, r.wordsClean], [45, 56, 1])
+  // וַאֲבָרֶכְךָ: one wrong vowel and a voiced sheva nach, 2 mistakes in 11
+  // sounds (the sheva nach is one) → 9/11 × 0.8.
+  assert.equal(wordScores(r)['וַאֲבָרֶכְךָ'], 65)
+  assert.equal(r.score, 64)
 })
 
 test('a skipped word scores 0', () => {
@@ -65,6 +67,6 @@ test('assessments report the word-based score as the verse score and on each wor
   const { words, scores } = assessManual(psukim[1].text, 'veescha legoy gagol vavarechecha avagadla shomcha veyes brecha', { tradition: 'ashkenazic' })
   const r = computeWordScore(words)
   assert.equal(scores.pronunciation, r.score)
-  assert.deepEqual([scores.wordsCorrect, scores.wordsTotal, scores.soundsRight, scores.soundsTotal], [1, 8, 43, 53])
+  assert.deepEqual([scores.wordsCorrect, scores.wordsTotal, scores.soundsRight, scores.soundsTotal], [1, 8, 45, 56])
   assert.deepEqual(words.map(w => w.score), r.words.map(w => w.score))
 })

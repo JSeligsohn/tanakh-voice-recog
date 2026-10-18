@@ -12,6 +12,11 @@ CRITICAL RULES:
 - Use simple Latin letters only. Use "sh" for shin, "s" for sin, "ch" for guttural ח/כ, "ts" for tzadi. Use single vowels (a, e, i, o, u) or common digraphs (ay, oy, ey).
 - The reference text is ONLY for finding word boundaries. Never copy a word's usual English spelling from it.
 
+SH vs S — readers often mix up שׁ (shin, "sh") and שׂ (sin, "s"), so listen to every one of these sounds and write the one you heard, never the one the spelling calls for:
+- "sh" — the hushing sound in "shoe": lower-pitched, lips pushed forward.
+- "s" — the hissing sound in "see": higher-pitched, a thin hiss.
+- Example: יִשְׂרָאֵל said "yish-ra-el" → "yishrael", NOT "yisrael". אֲשֶׁר said "a-ser" → "aser", NOT "asher". שָׂרַי said "sha-rai" → "sharay", NOT "saray".
+
 VOWELS — transcribe vowel sounds as carefully as consonants. Readers use different traditions: Modern/Sephardic ("baruch", "shalom", "amen") or Ashkenazic ("boruch", "sholom", "omayn" — kamatz as "aw", tzere as "ay", cholam as "oy"). Write what THIS reader actually said, choosing the letter by the sound:
 - "a" — only an open, unrounded "ah", as in "father".
 - "o" — any rounded vowel: "oh" as in "go" AND "aw" as in "law" or "thought". If the lips round at all, write "o", even when the word is usually spelled with "a". Example: בָּרוּךְ said "baw-rookh" → "boruch", NOT "baruch". שָׁלוֹם said "shaw-lohm" → "sholom", NOT "shalom".

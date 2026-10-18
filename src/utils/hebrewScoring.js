@@ -283,6 +283,31 @@ function alignSyllables(syllables, studentPhonetic) {
           elongated += lastVowelChar
         }
       }
+      // A sheva nach said aloud ("yiserael" for יִשְׂרָאֵל): the extra vowel
+      // belongs to this letter, not to the next one. Only when the next
+      // syllable can't start with that vowel itself (an alef's vowel).
+      if (syl.shevaType === 'nach') {
+        const after = remaining.slice(variantMatch.length)
+        const extra = after.match(/^[aeiou]+/)?.[0]
+        const rest = extra && after.slice(extra.length)
+        const voiced = extra && (nextSyl
+          ? !nextSyllableCanStartAt(after, nextSyl) && nextSyllableCanStartAt(rest, nextSyl)
+          : rest === '')
+        if (voiced) {
+          matches.push({
+            ...syl,
+            status: 'extra-vowel',
+            heardAt: pos,
+            heard: variantMatch + extra,
+            heardConsonant: variantMatch,
+            heardVowel: extra,
+            consonantMatched: true,
+            vowelMatched: false,
+          })
+          pos += variantMatch.length + extra.length
+          continue
+        }
+      }
       const status = elongated ? 'vowel-elongated' : 'matched'
       matches.push({
         ...syl,
@@ -648,20 +673,34 @@ function buildMismatchNote(m, tradition) {
   return `Skipped — the "${m.expected}" sound of ${m.display} wasn't heard.`
 }
 
-// Per-syllable sound breakdown for the sound-by-sound report. Each audible sound
-// (the consonant letter and the vowel) is tagged correct/incorrect from the
-// alignment. Silent sounds — alef/ayin, sheva nach, final silent ה — produce an
-// empty Latin sound and are omitted, since they contribute no audible sound to
-// count. `seg` is a syllable object carrying { consonant, vowel, atom }.
+// Per-syllable sound breakdown for the sound-by-sound report. Each sound (the
+// consonant letter and the vowel) is tagged correct/incorrect from the
+// alignment. Silent letters — alef/ayin, final silent ה — produce an empty
+// Latin sound and are omitted, since they contribute no sound to count. A
+// sheva nach is silent too, but when shevas are graded (shevaType is set) it
+// counts as its own sound, separate from sheva na: keeping it silent is
+// what's graded. `seg` is a syllable object carrying { consonant, vowel, atom }.
 function makeBreakdown(seg, consonantCorrect, vowelCorrect) {
+  const isNach = seg.shevaType === 'nach'
   return {
     consonant: seg.consonant
       ? { letter: seg.atom.letter, sound: seg.consonant, correct: consonantCorrect }
       : null,
-    vowel: seg.vowel
-      ? { name: seg.qamatsType === 'katan' ? 'qamats-katan' : seg.atom.vowel, sound: seg.vowel, correct: vowelCorrect }
+    vowel: seg.vowel || isNach
+      ? { name: breakdownVowelName(seg), sound: isNach ? '' : seg.vowel, correct: vowelCorrect }
       : null,
   }
+}
+
+// The vowel's row in the sound-by-sound report. Hataf patach is the same "a"
+// as patach, so it shares patach's row. A sheva that may be either is graded
+// as vocal (it shows "e"), so it counts as sheva na.
+function breakdownVowelName(seg) {
+  const v = seg.atom.vowel
+  if (v === 'sheva') return seg.shevaType === 'nach' ? 'sheva-nach' : 'sheva-na'
+  if (v === 'hataf-patah') return 'patah'
+  if (seg.qamatsType === 'katan') return 'qamats-katan'
+  return v
 }
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -739,6 +778,23 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
     expectedPhonetic: fullPhonetic,
     syllables: scoredSyllables.map(({ _match, ...rest }) => rest),
   }
+}
+
+// Split what was heard for a run of maqef-joined words (אֶל־, אַבְרָם heard
+// together as "elavram") into each word's part. The run is aligned as one
+// phrase, so sounds that run across the maqef land where they belong
+// (אֶת־שָׂרַי "etsaray": the "t" is ת, the "s" is שׂ), then cut where each
+// word's first letter was heard. Returns one string per word ('' for a word
+// that wasn't heard).
+export function splitHeardAcrossWords(words, heard, settings = {}) {
+  const { tradition = 'sephardic', shevaMode = 'enforce' } = settings
+  const atoms = tokenizeWord(words.join(''))
+  const { segments } = getExpectedPhonetic(atoms, { tradition, shevaMode })
+  const { matches } = alignSyllables(buildSyllables(atoms, segments), heard)
+  const student = normalizeStudent(heard).replace(/\s+/g, '')
+  const starts = matches.filter(m => m.atom.wordStart).map(m => m.heardAt)
+  starts[0] = 0
+  return words.map((_, k) => student.slice(starts[k] ?? student.length, starts[k + 1] ?? student.length))
 }
 
 // Score an entire utterance: word-by-word using provided per-word transcriptions.

@@ -9,6 +9,7 @@ import { isSpeechAvailable } from './services/azureAuth'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
+import VoiceLab from './components/VoiceLab'
 import { waitForAudio } from './utils/micReady'
 import { checkRecording } from './utils/recordingCheck'
 import { entrySettings, settingsDiff } from './utils/historySettings'
@@ -659,6 +660,14 @@ export default function App() {
                 Transcription check
               </button>
             )}
+            {import.meta.env.DEV && (
+              <button
+                className={`main-nav-tab ${activeTab === 'voices' ? 'main-nav-tab--active' : ''}`}
+                onClick={() => setActiveTab('voices')}
+              >
+                Voice lab
+              </button>
+            )}
           </div>
           <div className="dev-role-toggle">
             <span className="dev-role-label">[dev]</span>
@@ -680,6 +689,12 @@ export default function App() {
         {import.meta.env.DEV && activeTab === 'transcription' && (
           <main className="app-main">
             <TranscriptionCheck />
+          </main>
+        )}
+
+        {import.meta.env.DEV && activeTab === 'voices' && (
+          <main className="app-main">
+            <VoiceLab />
           </main>
         )}
 

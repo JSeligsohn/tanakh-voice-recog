@@ -1,0 +1,501 @@
+<title>Tanakh Voice Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Rubik:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one reading column; each verse is a card, each variant a row, each voice one line of takes + rating. */
+  :root {
+    --bg: #f7f6f4;
+    --surface: #ffffff;
+    --ink: #1f1a17;
+    --muted: #6f6762;
+    --faint: #a59d97;
+    --line: #e6e1dc;
+    --accent: #8a1f1f;
+    --accent-soft: #f7e9e7;
+    --good: #15803d;
+    --good-soft: #dcf5e3;
+    --bad: #b91c1c;
+    --bad-soft: #fde4e4;
+    --focus: #1d4ed8;
+    --font-ui: 'Rubik', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-he: 'Frank Ruhl Libre', 'Times New Roman', 'David', serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161312; --surface: #211d1b; --ink: #f1ece8; --muted: #b0a7a1; --faint: #7d746f; --line: #38312d;
+      --accent: #e8968b; --accent-soft: #3b2220; --good: #5ad58a; --good-soft: #14321f; --bad: #f58a8a; --bad-soft: #3d1a1a; --focus: #8fb0ff;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161312; --surface: #211d1b; --ink: #f1ece8; --muted: #b0a7a1; --faint: #7d746f; --line: #38312d;
+    --accent: #e8968b; --accent-soft: #3b2220; --good: #5ad58a; --good-soft: #14321f; --bad: #f58a8a; --bad-soft: #3d1a1a; --focus: #8fb0ff;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; }
+  .wrap { max-width: 62rem; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; display: flex; flex-direction: column; gap: 22px; }
+
+  header { display: flex; flex-direction: column; gap: 8px; }
+  h1 { margin: 0; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+  h1 .he { font-family: var(--font-he); font-weight: 700; color: var(--accent); margin-inline-start: 0.35em; }
+  .intro { margin: 0; color: var(--muted); max-width: 65ch; }
+  .who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--muted); }
+  .who img { width: 22px; height: 22px; border-radius: 50%; }
+  .who strong { color: var(--ink); font-weight: 500; }
+  .who input { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); width: 12rem; }
+  .notice { margin: 0; padding: 10px 14px; border-radius: 8px; background: var(--accent-soft); color: var(--ink); font-size: 0.88rem; }
+  .notice[hidden] { display: none; }
+
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .bar-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .bar-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin-inline-end: 2px; }
+  .progress { margin-inline-start: auto; font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .chip { padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line); background: transparent; font-size: 0.84rem; color: var(--muted); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+
+  h2 { margin: 0; font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+  section { display: flex; flex-direction: column; gap: 10px; }
+
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  th { text-align: left; font-weight: 500; color: var(--faint); font-size: 0.76rem; padding: 10px 12px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .variant-name { font-weight: 500; }
+  .variant-about { color: var(--faint); font-size: 0.78rem; max-width: 34rem; }
+  .tag { display: inline-block; min-width: 1.5em; text-align: center; font-size: 0.68rem; font-weight: 600; padding: 0 4px; margin-inline-end: 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+  .tally { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--faint); }
+  .tally .g { color: var(--good); font-weight: 600; }
+  .tally .b { color: var(--bad); font-weight: 600; }
+
+  .verse { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
+  .verse-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+  .verse-book { font-weight: 600; }
+  .verse-covers { font-size: 0.8rem; color: var(--faint); }
+  .hebrew { font-family: var(--font-he); font-size: 1.55rem; line-height: 1.85; direction: rtl; text-align: right; margin: 2px 0 4px; }
+  .accent-title { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 0.76rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+
+  .row { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); gap: 6px 14px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: none; }
+  .row-label { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 0.9rem; font-weight: 500; }
+  .link { background: none; border: none; padding: 0; font-size: 0.78rem; font-weight: 400; color: var(--focus); text-decoration: underline; }
+.prompt { grid-column: 1 / -1; margin: 0; font-size: 0.82rem; line-height: 1.55; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 8px 12px; max-width: 70ch; }
+  .prompt-label { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 2px; }
+  details.prompt-details { margin-top: 4px; font-size: 0.78rem; color: var(--muted); max-width: 40rem; }
+  details.prompt-details summary { cursor: pointer; color: var(--focus); width: fit-content; }
+  details.prompt-details p { margin: 4px 0 0; line-height: 1.55; }
+  .sent.roman { font-family: inherit; font-size: 1rem; direction: ltr; text-align: left; }
+  .sent { grid-column: 1 / -1; font-family: var(--font-he); font-size: 1.2rem; line-height: 1.8; direction: rtl; text-align: right; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 4px 12px; }
+  .lines { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+  .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .voice { width: 3rem; font-size: 0.78rem; color: var(--faint); }
+  .takes { display: flex; flex-wrap: wrap; gap: 4px; }
+  .take { min-width: 2.6rem; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+  .take.current { border-color: var(--ink); }
+  .take.playing { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .take.mine-good { box-shadow: inset 0 -3px 0 var(--good); }
+  .take.mine-bad { box-shadow: inset 0 -3px 0 var(--bad); }
+  .rate { display: flex; flex: 1; min-width: 14rem; align-items: center; gap: 4px; }
+  .vote { padding: 3px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 0.82rem; }
+  .vote.good[aria-pressed="true"] { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+  .vote.bad[aria-pressed="true"] { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+  .vote:disabled { opacity: 0.45; cursor: not-allowed; }
+  .note { flex: 1 1 8rem; min-width: 0; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 0.84rem; }
+  .note:disabled { opacity: 0.6; }
+  .others { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; padding-inline-start: 3.6rem; font-size: 0.8rem; color: var(--muted); }
+  .others:empty { display: none; }
+  .others .by { font-weight: 500; color: var(--ink); }
+  .others .g { color: var(--good); }
+  .others .b { color: var(--bad); }
+  .empty { color: var(--faint); font-size: 0.85rem; }
+
+  @media (max-width: 640px) {
+    .row { grid-template-columns: 1fr; }
+    .hebrew { font-size: 1.35rem; }
+    .others { padding-inline-start: 0; }
+    .progress { margin-inline-start: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Voice lab <span class="he" lang="he">קְרִיאָה</span></h1>
+    <p class="intro">
+      These are computer-generated readings of six Torah verses, made with OpenAI in Sephardi and Ashkenazi pronunciation in
+      several ways. Play each take and mark it 👍 if it reads the verse correctly and naturally, or 👎 if anything is off.
+      If something is wrong, say what in the note, for example “said <em>t</em> instead of <em>s</em> in בֵּית”.
+      Everyone's ratings are combined in the scoreboard. Press <em>prompt</em> on any row to see exactly what the
+      model was told, and <em>text sent</em> to see the respelled Hebrew or English letters it was given.
+    </p>
+    <div class="who" id="who">Loading…</div>
+    <p class="notice" id="notice" hidden></p>
+  </header>
+
+  <div class="bar">
+    <div class="bar-group" id="accent-filter"><span class="bar-label">Accent</span></div>
+    <div class="bar-group" id="voice-filter"><span class="bar-label">Voices</span></div>
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <section>
+    <h2>Scoreboard</h2>
+    <div class="table-wrap"><table id="scoreboard"></table></div>
+  </section>
+
+  <div id="verses" class="wrap-verses" style="display:flex;flex-direction:column;gap:22px"></div>
+</div>
+
+<script>
+(() => {
+  const ACCENTS = [{ id: 'sephardi', label: 'Sephardi' }, { id: 'ashkenazi', label: 'Ashkenazi' }]
+  const PREFS_KEY = 'voice-lab-prefs'
+  const NAME_KEY = 'voice-lab-name'
+
+  const state = {
+    catalog: null,
+    accents: new Set(['sephardi', 'ashkenazi']),
+    voices: new Set(['ash', 'cedar']),
+    docs: {},            // ratings/<key> → { by, name, clips: { clipId: { rating, note, at } } }
+    names: {},           // viewer id → display name
+    mine: {},            // this viewer's clips map
+    myKey: null, myId: null, myName: '',
+    canWrite: false,
+    selected: {},        // cell key → clip id
+    playing: null,
+    openText: new Set(),
+  }
+  let db = null, userCap = null, writing = false, pendingWrite = false
+
+  const $ = id => document.getElementById(id)
+  const el = (tag, attrs = {}, ...kids) => {
+    const node = document.createElement(tag)
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') node.className = v
+      else if (k === 'text') node.textContent = v
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
+      else if (v !== null && v !== undefined && v !== false) node.setAttribute(k, v === true ? '' : v)
+    }
+    for (const kid of kids.flat()) if (kid != null) node.append(kid)
+    return node
+  }
+  const cellKey = (verseId, variantId, voice) => `${verseId}|${variantId}|${voice}`
+
+  function loadPrefs() {
+    try {
+      const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')
+      if (Array.isArray(p.accents)) state.accents = new Set(p.accents)
+      if (Array.isArray(p.voices)) state.voices = new Set(p.voices)
+    } catch { /* storage unavailable */ }
+  }
+  function savePrefs() {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ accents: [...state.accents], voices: [...state.voices] })) } catch { /* ignore */ }
+  }
+
+  // ── Ratings ────────────────────────────────────────────────────────
+  function allRatings(clipId) {
+    const out = []
+    for (const [key, doc] of Object.entries(state.docs)) {
+      const r = key === state.myKey ? state.mine[clipId] : doc.clips?.[clipId]
+      if (r && (r.rating || r.note)) out.push({ key, doc, ...r })
+    }
+    if (state.myKey && !state.docs[state.myKey] && state.mine[clipId]) {
+      const r = state.mine[clipId]
+      if (r.rating || r.note) out.push({ key: state.myKey, doc: {}, ...r })
+    }
+    return out
+  }
+  function whoLabel(entry) {
+    if (entry.key === state.myKey) return 'You'
+    if (entry.doc.by) return state.names[entry.doc.by] || 'Someone'
+    return entry.doc.name || 'Someone'
+  }
+
+  function setMine(clipId, change) {
+    if (!state.canWrite || !state.myKey) return
+    const next = { ...(state.mine[clipId] || { rating: null, note: '' }), ...change, at: Date.now() }
+    if (!next.rating && !next.note) delete state.mine[clipId]
+    else state.mine[clipId] = next
+    writeMine()
+    refresh()
+  }
+
+  async function writeMine() {
+    if (writing) { pendingWrite = true; return }
+    writing = true
+    try {
+      do {
+        pendingWrite = false
+        await db.collection('ratings').doc(state.myKey).set({
+          by: state.myId,
+          name: state.myId ? null : state.myName,
+          clips: JSON.parse(JSON.stringify(state.mine)),
+        })
+      } while (pendingWrite)
+      showNotice('')
+    } catch (e) {
+      if (e?.code === 'invalid_argument') {
+        state.canWrite = false
+        showNotice('Your ratings can’t be saved with the access you have. Ask the owner to share this page with you as an Editor.')
+      } else if (e?.code === 'quota_exceeded') {
+        showNotice('The ratings store is full. Tell the owner.')
+      } else {
+        showNotice('Couldn’t save your last rating. Check your connection and rate again.')
+      }
+      refresh()
+    } finally {
+      writing = false
+    }
+  }
+
+  function showNotice(text) { const n = $('notice'); n.textContent = text; n.hidden = !text }
+
+  // ── Playback ───────────────────────────────────────────────────────
+  const audio = new Audio()
+  audio.addEventListener('ended', () => { state.playing = null; refresh() })
+  audio.addEventListener('error', () => { if (state.playing) { state.playing = null; showNotice('That take couldn’t be played. Try again.'); refresh() } })
+  function play(clip) {
+    if (state.playing === clip.id) { audio.pause(); state.playing = null; refresh(); return }
+    audio.pause()
+    audio.src = clip.file
+    state.playing = clip.id
+    state.selected[cellKey(clip.verseId, clip.variantId, clip.voice)] = clip.id
+    audio.play().catch(() => { state.playing = null; refresh() })
+    refresh()
+  }
+
+  // ── Rendering ──────────────────────────────────────────────────────
+  // What the model was told for a variant, with a label naming where it went
+  function promptLabel(variant) {
+    return variant.engine === 'chat'
+      ? `System prompt to ${variant.model}`
+      : `Instructions to ${variant.model}`
+  }
+  const promptText = variant => variant.instructions || 'None: the verse text was sent on its own.'
+
+  const visibleVariants = () => state.catalog.variants.filter(v => state.accents.has(v.accent))
+  const allVoices = () => [...new Set(state.catalog.clips.map(c => c.voice))]
+  const visibleVoices = () => allVoices().filter(v => state.voices.has(v))
+  const takesFor = (verseId, variantId, voice) => state.catalog.clips
+    .filter(c => c.verseId === verseId && c.variantId === variantId && c.voice === voice)
+    .sort((a, b) => a.take - b.take)
+
+  function renderFilters() {
+    const accentBox = $('accent-filter'), voiceBox = $('voice-filter')
+    accentBox.replaceChildren(accentBox.firstElementChild)
+    voiceBox.replaceChildren(voiceBox.firstElementChild)
+    for (const a of ACCENTS) {
+      accentBox.append(el('button', {
+        class: 'chip', 'aria-pressed': String(state.accents.has(a.id)), text: a.label,
+        onclick: () => { state.accents.has(a.id) ? state.accents.delete(a.id) : state.accents.add(a.id); savePrefs(); renderAll() },
+      }))
+    }
+    for (const v of allVoices()) {
+      voiceBox.append(el('button', {
+        class: 'chip', 'aria-pressed': String(state.voices.has(v)), text: v,
+        onclick: () => { state.voices.has(v) ? state.voices.delete(v) : state.voices.add(v); savePrefs(); renderAll() },
+      }))
+    }
+  }
+
+  function tallyNode(clips) {
+    let good = 0, bad = 0
+    for (const c of clips) for (const r of allRatings(c.id)) { if (r.rating === 'good') good++; else if (r.rating === 'bad') bad++ }
+    if (good + bad === 0) return el('span', { class: 'tally', text: '—' })
+    return el('span', { class: 'tally' }, el('span', { class: 'g', text: `${good}👍` }), ' ', el('span', { class: 'b', text: `${bad}👎` }))
+  }
+
+  function renderScoreboard() {
+    const voices = visibleVoices()
+    const table = $('scoreboard')
+    const head = el('tr', {}, el('th', { text: 'Variant' }), voices.map(v => el('th', { text: v })), el('th', { text: 'All voices' }))
+    const rows = visibleVariants().map(variant => {
+      const clipsOf = voice => state.catalog.clips.filter(c => c.variantId === variant.id && (!voice || c.voice === voice))
+      return el('tr', {},
+        el('td', {},
+          el('div', { class: 'variant-name' }, el('span', { class: 'tag', text: variant.accent === 'sephardi' ? 'S' : 'A' }), variant.label),
+          el('div', { class: 'variant-about', text: variant.about }),
+          el('details', { class: 'prompt-details' },
+            el('summary', { text: 'Prompt' }),
+            el('p', {}, el('strong', { text: `${promptLabel(variant)}: ` }), promptText(variant)))),
+        voices.map(v => el('td', {}, tallyNode(clipsOf(v)))),
+        el('td', {}, tallyNode(clipsOf(null))))
+    })
+    table.replaceChildren(el('thead', {}, head), el('tbody', {}, rows))
+  }
+
+  function renderProgress() {
+    const shown = state.catalog.clips.filter(c => state.voices.has(c.voice) && visibleVariants().some(v => v.id === c.variantId))
+    const rated = shown.filter(c => state.mine[c.id]?.rating).length
+    $('progress').textContent = state.myKey ? `You've rated ${rated} of ${shown.length} takes shown` : `${shown.length} takes shown`
+  }
+
+  // One voice line: takes, rating for the selected take, note, and everyone else's ratings of it
+  function renderLine(line) {
+    const { verse, variant, voice } = line._cell
+    const takes = takesFor(verse, variant, voice)
+    const key = cellKey(verse, variant, voice)
+    const current = takes.find(t => t.id === state.selected[key]) || takes[takes.length - 1]
+    const takesBox = line.querySelector('.takes')
+    takesBox.replaceChildren(...takes.map(t => {
+      const mine = state.mine[t.id]?.rating
+      const cls = ['take', t.id === current?.id && 'current', state.playing === t.id && 'playing', mine && `mine-${mine}`].filter(Boolean).join(' ')
+      return el('button', {
+        class: cls, onclick: () => play(t),
+        'aria-label': `${state.playing === t.id ? 'Stop' : 'Play'} take ${t.take}`,
+        text: `${state.playing === t.id ? '■' : '▶'} ${t.take}`,
+      })
+    }))
+    const mine = current ? state.mine[current.id] : null
+    const good = line.querySelector('.vote.good'), bad = line.querySelector('.vote.bad'), note = line.querySelector('.note')
+    const disabled = !current || !state.canWrite || !state.myKey
+    good.disabled = bad.disabled = note.disabled = disabled
+    good.setAttribute('aria-pressed', String(mine?.rating === 'good'))
+    bad.setAttribute('aria-pressed', String(mine?.rating === 'bad'))
+    line._clip = current
+    if (document.activeElement !== note) note.value = mine?.note || ''
+    note.placeholder = current ? `Note on take ${current.take}` : ''
+    const others = line.querySelector('.others')
+    const entries = current ? allRatings(current.id).filter(r => r.key !== state.myKey) : []
+    others.replaceChildren(...entries.map(r => el('div', {},
+      el('span', { class: 'by', text: whoLabel(r) }), ' ',
+      r.rating ? el('span', { class: r.rating === 'good' ? 'g' : 'b', text: r.rating === 'good' ? '👍' : '👎' }) : null,
+      r.note ? ` ${r.note}` : '')))
+  }
+
+  function makeLine(verse, variant, voice) {
+    const line = el('div', { class: 'line' },
+      el('span', { class: 'voice', text: voice }),
+      el('div', { class: 'takes' }),
+      el('div', { class: 'rate' },
+        el('button', { class: 'vote good', 'aria-pressed': 'false', 'aria-label': 'Good reading', text: '👍',
+          onclick: () => line._clip && setMine(line._clip.id, { rating: state.mine[line._clip.id]?.rating === 'good' ? null : 'good' }) }),
+        el('button', { class: 'vote bad', 'aria-pressed': 'false', 'aria-label': 'Something is off', text: '👎',
+          onclick: () => line._clip && setMine(line._clip.id, { rating: state.mine[line._clip.id]?.rating === 'bad' ? null : 'bad' }) }),
+        el('input', { class: 'note', type: 'text', id: `note-${cellKey(verse.id, variant.id, voice).replaceAll('|', '-')}`, 'aria-label': 'Note',
+          onchange: e => line._clip && setMine(line._clip.id, { note: e.target.value.trim() }) })),
+      el('div', { class: 'others' }))
+    line._cell = { verse: verse.id, variant: variant.id, voice }
+    line.classList.add('js-line')
+    return line
+  }
+
+  function renderVerses() {
+    const voices = visibleVoices()
+    const box = $('verses')
+    box.replaceChildren(...state.catalog.verses.map(verse => {
+      const card = el('section', { class: 'verse' },
+        el('div', { class: 'verse-head' }, el('span', { class: 'verse-book', text: verse.book }), el('span', { class: 'verse-covers', text: verse.covers })),
+        el('div', { class: 'hebrew', lang: 'he', text: verse.text.replaceAll('־', '־⁠') }))
+      for (const accent of ACCENTS.filter(a => state.accents.has(a.id))) {
+        card.append(el('div', { class: 'accent-title', text: accent.label }))
+        for (const variant of state.catalog.variants.filter(v => v.accent === accent.id)) {
+          const textKey = `${verse.id}|${variant.id}`
+          const sample = state.catalog.clips.find(c => c.verseId === verse.id && c.variantId === variant.id)
+          const row = el('div', { class: 'row' },
+            el('div', { class: 'row-label' },
+              el('span', { title: variant.about, text: variant.label }),
+              el('button', { class: 'link', text: state.openText.has(`${textKey}|prompt`) ? 'hide prompt' : 'prompt',
+                onclick: () => { const k = `${textKey}|prompt`; state.openText.has(k) ? state.openText.delete(k) : state.openText.add(k); renderVerses(); refresh() } }),
+              (variant.respelled || variant.romanized) && sample ? el('button', { class: 'link', text: state.openText.has(textKey) ? 'hide text sent' : 'text sent',
+                onclick: () => { state.openText.has(textKey) ? state.openText.delete(textKey) : state.openText.add(textKey); renderVerses(); refresh() } }) : null),
+            el('div', { class: 'lines' }, voices.map(voice =>
+              takesFor(verse.id, variant.id, voice).length ? makeLine(verse, variant, voice) : null)))
+          if (state.openText.has(`${textKey}|prompt`)) {
+            row.append(el('p', { class: 'prompt' }, el('span', { class: 'prompt-label', text: promptLabel(variant) }), promptText(sample?.instructions ? sample : variant)))
+          }
+          if (state.openText.has(textKey) && sample) row.append(variant.romanized
+            ? el('div', { class: 'sent roman', text: sample.input })
+            : el('div', { class: 'sent', lang: 'he', text: sample.input.replaceAll('־', '־⁠') }))
+          if (!row.querySelector('.line')) row.querySelector('.lines').append(el('span', { class: 'empty', text: 'No takes in the voices shown' }))
+          card.append(row)
+        }
+      }
+      return card
+    }))
+  }
+
+  function refresh() {
+    renderScoreboard()
+    renderProgress()
+    document.querySelectorAll('.js-line').forEach(renderLine)
+  }
+  function renderAll() { renderFilters(); renderVerses(); refresh() }
+
+  function renderWho(me) {
+    const who = $('who')
+    if (!db) { who.textContent = 'Listening only: ratings can’t be saved in this view.'; return }
+    if (state.myId) {
+      who.replaceChildren(el('img', { src: me.avatarUrl, alt: '' }), 'Rating as ', el('strong', { text: me.name || 'you' }))
+      if (!state.canWrite) who.append(' · listening only')
+      return
+    }
+    // No account identity here: ask for a name so ratings can be told apart
+    const input = el('input', { id: 'rater-name', type: 'text', placeholder: 'Your name', value: state.myName, 'aria-label': 'Your name',
+      onchange: e => {
+        state.myName = e.target.value.trim()
+        try { localStorage.setItem(NAME_KEY, state.myName) } catch { /* ignore */ }
+        const slug = state.myName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+        state.myKey = slug ? `name-${slug}` : null
+        state.mine = JSON.parse(JSON.stringify(state.docs[state.myKey]?.clips || {}))
+        refresh()
+      } })
+    who.replaceChildren('Your name, so your ratings can be told apart:', input)
+  }
+
+  async function resolveNames() {
+    if (!userCap) return
+    const ids = Object.values(state.docs).map(d => d.by).filter(Boolean)
+    if (!ids.length) return
+    const profiles = await userCap.profiles(ids)
+    let changed = false
+    for (const id of ids) if (state.names[id] !== profiles[id].name) { state.names[id] = profiles[id].name; changed = true }
+    if (changed) refresh()
+  }
+
+  async function connect() {
+    if (!window.claude?.use) { renderWho(); return }
+    ;[db, userCap] = await Promise.all([window.claude.use('db'), window.claude.use('user')])
+    if (!db) { renderWho(); refresh(); return }
+    const me = userCap ? await userCap.me() : null
+    state.myId = me?.id || null
+    const canWrite = userCap ? await userCap.can('data.write') : null
+    state.canWrite = canWrite !== false
+    if (canWrite === false) showNotice('You can listen and see the ratings, but not rate. Ask the owner to share this page with you as an Editor.')
+    if (state.myId) state.myKey = state.myId
+    else {
+      try { state.myName = localStorage.getItem(NAME_KEY) || '' } catch { /* ignore */ }
+      const slug = state.myName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+      state.myKey = slug ? `name-${slug}` : null
+    }
+    renderWho(me)
+    db.collection('ratings').onSnapshot(snap => {
+      state.docs = Object.fromEntries(snap.docs.map(d => [d.id, d.data()]))
+      if (!writing && state.myKey && state.docs[state.myKey]) state.mine = JSON.parse(JSON.stringify(state.docs[state.myKey].clips || {}))
+      refresh()
+      resolveNames()
+    }, () => showNotice('Lost the connection to the ratings. Reload the page to see the latest.'))
+  }
+
+  async function start() {
+    loadPrefs()
+    try {
+      state.catalog = await (await fetch('catalog.json')).json()
+    } catch {
+      $('verses').textContent = 'Couldn’t load the readings. Reload the page.'
+      return
+    }
+    renderAll()
+    renderWho()
+    $('who').textContent = 'Connecting to ratings…'
+    connect()
+  }
+  start()
+})()
+</script>

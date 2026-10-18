@@ -17,6 +17,61 @@
 // A word with any mistake keeps this share of its sound score.
 export const MISTAKE_WORD_FACTOR = 0.8
 
+// The sounds of a graded syllable: its consonant and vowel, each right or wrong
+const soundsOf = p => [p.breakdown?.consonant, p.breakdown?.vowel].filter(Boolean)
+
+// A graded syllable is right when all its sounds are right and nothing was
+// noted about it (a slip, like an extra sound or a held vowel, has a note but
+// no wrong sound). This is what the word popover marks ✓ or ✗.
+export const syllableRight = p => !p.note && soundsOf(p).every(s => s.correct)
+
+// One graded word's score, sounds and mistakes (see the top of this file)
+export function wordScoreOf(w) {
+  if (w.errorType === 'Omission') return { word: w.word, score: 0, sounds: 0, soundsRight: 0, mistakes: 0, skipped: true }
+
+  let sounds = 0
+  let soundsRight = 0
+  let mistakes = w.errorType === 'OutOfOrder' ? 1 : 0
+  for (const p of w.phonemes) {
+    const parts = soundsOf(p)
+    sounds += parts.length
+    const wrong = parts.filter(s => !s.correct).length
+    soundsRight += parts.length - wrong
+    mistakes += wrong
+    // A note with no wrong sound is a slip — except an out-of-order word's
+    // own note, already counted above.
+    if (p.note && wrong === 0 && w.errorType !== 'OutOfOrder') mistakes++
+  }
+  const soundShare = sounds ? Math.max(0, (sounds - mistakes) / sounds) : (mistakes ? 0 : 1)
+  const score = Math.round(100 * soundShare * (mistakes ? MISTAKE_WORD_FACTOR : 1))
+  return { word: w.word, score, sounds, soundsRight, mistakes, skipped: false }
+}
+
+// The kinds of mistake a graded syllable can carry (its `issues`), as a word's
+// label names them
+const ISSUE_LABELS = {
+  'wrong-letter': 'Wrong letter',
+  'wrong-vowel': 'Wrong vowel',
+  'missing-sound': 'Missing sound',
+  'extra-sound': 'Extra sound',
+  'held-vowel': 'Vowel held too long',
+  'repeated': 'Repeated',
+  'out-of-order': 'Out of order',
+}
+
+// A graded word's label: "Correct", "Skipped", the kind of its one mistake
+// ("Wrong vowel"), or how many mistakes it has ("2 mistakes"); the notes say
+// what each one was. Readings saved before mistakes had kinds get a count.
+export function wordLabel(w) {
+  if (w.errorType === 'Omission') return 'Skipped'
+  const issues = w.phonemes.flatMap(p => p.issues ?? [])
+  const known = w.phonemes.some(p => p.issues)
+  const count = known ? issues.length : wordScoreOf(w).mistakes
+  if (count === 0) return 'Correct'
+  if (count === 1 && known) return ISSUE_LABELS[issues[0]] ?? '1 mistake'
+  return count === 1 ? '1 mistake' : `${count} mistakes`
+}
+
 // words: graded words as the results view gets them ({ errorType, phonemes:
 // [{ note, breakdown: { consonant, vowel } }] }). Returns null for attempts
 // without per-sound breakdowns (Azure, OpenAI LLM), which this model can't read.
@@ -25,26 +80,7 @@ export function computeWordScore(words) {
   const graded = words.filter(w => w.errorType !== 'Omission')
   if (graded.length > 0 && !graded.some(w => w.phonemes?.some(p => p.breakdown))) return null
 
-  const scored = words.map(w => {
-    if (w.errorType === 'Omission') return { word: w.word, score: 0, sounds: 0, soundsRight: 0, mistakes: 0, skipped: true }
-
-    let sounds = 0
-    let soundsRight = 0
-    let mistakes = w.errorType === 'OutOfOrder' ? 1 : 0
-    for (const p of w.phonemes) {
-      const parts = [p.breakdown?.consonant, p.breakdown?.vowel].filter(Boolean)
-      sounds += parts.length
-      const wrong = parts.filter(s => !s.correct).length
-      soundsRight += parts.length - wrong
-      mistakes += wrong
-      // A note with no wrong sound is a slip — except an out-of-order word's
-      // own note, already counted above.
-      if (p.note && wrong === 0 && w.errorType !== 'OutOfOrder') mistakes++
-    }
-    const soundShare = sounds ? Math.max(0, (sounds - mistakes) / sounds) : (mistakes ? 0 : 1)
-    const score = Math.round(100 * soundShare * (mistakes ? MISTAKE_WORD_FACTOR : 1))
-    return { word: w.word, score, sounds, soundsRight, mistakes, skipped: false }
-  })
+  const scored = words.map(wordScoreOf)
 
   const sum = (key) => scored.reduce((s, w) => s + w[key], 0)
   return {

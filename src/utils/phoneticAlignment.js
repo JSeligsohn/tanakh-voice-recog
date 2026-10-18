@@ -266,10 +266,16 @@ export function applyAlignmentNotes(scored, { stutters = [], outOfOrder = [] }) 
     const notes = [stutters[i] && STUTTER_NOTE, outOfOrder[i] && OUT_OF_ORDER_NOTE].filter(Boolean)
     if (notes.length === 0) return w
     const extra = notes.join(' ')
-    const syllables = w.syllables.length > 0
-      ? [{ ...w.syllables[0], note: w.syllables[0].note ? `${w.syllables[0].note} ${extra}` : extra }, ...w.syllables.slice(1)]
+    const kinds = [stutters[i] && 'repeated', outOfOrder[i] && 'out-of-order'].filter(Boolean)
+    const first = w.syllables[0]
+    const syllables = first
+      ? [{ ...first, note: first.note ? `${first.note} ${extra}` : extra, issues: [...(first.issues ?? []), ...kinds] }, ...w.syllables.slice(1)]
       : w.syllables
-    if (!outOfOrder[i]) return { ...w, syllables }
+    if (!outOfOrder[i]) {
+      // A repeat is a mistake too (it costs the word score), so an otherwise
+      // clean word is marked repeated, not correct
+      return { ...w, syllables, errorType: w.errorType === 'None' ? 'Repeated' : w.errorType }
+    }
     return { ...w, syllables, score: Math.min(w.score, OUT_OF_ORDER_MAX_SCORE), errorType: 'OutOfOrder' }
   })
 }

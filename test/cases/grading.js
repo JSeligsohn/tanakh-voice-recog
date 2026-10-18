@@ -142,11 +142,11 @@ export const verseCases = [
   },
   {
     text: 'וַיֹּאמֶר הַשֵּׁם אֶל־אַבְרָם', heard: 'vayomer hashem hashem el avram',
-    expect: {}, notes: { 1: 'Stuttered' }, rule: 'word repeated',
+    expect: { 1: 'Repeated' }, notes: { 1: 'Stuttered' }, rule: 'word repeated',
   },
   {
     text: 'וַיֹּאמֶר הַשֵּׁם אֶל־אַבְרָם', heard: 'vayomer hashem hashem shalom el avram',
-    expect: {}, rule: 'extra word inserted is skipped over',
+    expect: { 1: 'Repeated' }, rule: 'extra word inserted is skipped over',
   },
   {
     text: 'לֶךְ־לְךָ מֵאַרְצְךָ', heard: 'lech lecha meartsecha',

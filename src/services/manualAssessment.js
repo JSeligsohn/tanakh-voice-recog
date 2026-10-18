@@ -41,8 +41,8 @@ export function assessManual(referenceText, typedPhonetic, settings = {}) {
     phoneticHeard: w.phoneticHeard,
     phonemes: w.syllables.map(s => ({
       phoneme: s.phoneme,
-      accuracyScore: s.accuracyScore,
       note: s.note,
+      issues: s.issues,
       breakdown: s.breakdown,
     })),
   })), oldScores)

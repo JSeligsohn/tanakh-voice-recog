@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { psukim } from './data/psukim'
 import { startPronunciationAssessment } from './services/speechAssessment'
 import { assessWithOpenAI } from './services/openaiAssessment'
@@ -9,6 +9,7 @@ import { listenUrl, playRecording } from './services/listen'
 import { isSpeechAvailable } from './services/azureAuth'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import { splitVerseWords } from './utils/hebrewRules'
+import { syllableRight, wordLabel } from './utils/wordScore'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
 import VoiceLab from './components/VoiceLab'
@@ -42,12 +43,13 @@ function scoreLabel(score, errorType) {
 // A verse with each maqef part as its own word, as the rules engine grades it
 const gradedWordsText = text => splitVerseWords(text).join(' ')
 
-function WordChip({ word, score, errorType, isSelected, onClick, showScore }) {
+function WordChip({ word, score, errorType, isSelected, onClick, showScore, chipRef }) {
   const color = scoreColor(score, errorType)
   const isOmitted = errorType === 'Omission'
 
   return (
     <span
+      ref={chipRef}
       className={`word-chip ${isSelected ? 'word-chip--selected' : ''} ${showScore ? 'word-chip--with-score' : ''}`}
       onClick={onClick}
       title="Click for phoneme breakdown"
@@ -74,15 +76,93 @@ function WordChip({ word, score, errorType, isSelected, onClick, showScore }) {
   )
 }
 
+// Where the word popover goes: centered over its word (kept inside the verse
+// card), above the word when it fits on screen, otherwise below it
+function placePopover(anchor, container, pop) {
+  const GAP = 10, EDGE = 8, ARROW_INSET = 16
+  const c = container.getBoundingClientRect()
+  const a = anchor.getBoundingClientRect()
+  const w = pop.offsetWidth
+  const h = pop.offsetHeight
+  const originX = c.left + container.clientLeft
+  const originY = c.top + container.clientTop
+  const centerX = a.left + a.width / 2 - originX
+  const left = Math.max(EDGE, Math.min(centerX - w / 2, container.clientWidth - w - EDGE))
+  const fitsAbove = a.top - GAP - h >= EDGE
+  const fitsBelow = a.bottom + GAP + h <= window.innerHeight - EDGE
+  const placement = fitsAbove || (!fitsBelow && a.top > window.innerHeight - a.bottom) ? 'above' : 'below'
+  return {
+    placement,
+    left,
+    top: placement === 'above' ? a.top - originY - GAP - h : a.bottom - originY + GAP,
+    arrowX: Math.max(ARROW_INSET, Math.min(centerX - left, w - ARROW_INSET)),
+  }
+}
+
+// A clicked word's score and breakdown, in a popover on the word
+function WordPopover({ chipRefs, index, containerRef, onClose, ...panelProps }) {
+  const popRef = useRef(null)
+  const [pos, setPos] = useState(null)
+
+  useLayoutEffect(() => {
+    const pop = popRef.current
+    const anchor = chipRefs.current[index]
+    const container = containerRef.current
+    if (!anchor || !container || !pop) return
+    // A word picked from the issues list may be scrolled away: bring it into view
+    const a = anchor.getBoundingClientRect()
+    if (a.top < 0 || a.bottom > window.innerHeight) anchor.scrollIntoView({ block: 'center' })
+    const place = () => setPos(placePopover(anchor, container, pop))
+    place()
+    // Re-place when the verse re-wraps or the popover's content changes size
+    const observer = new ResizeObserver(place)
+    observer.observe(container)
+    observer.observe(pop)
+    window.addEventListener('resize', place)
+    return () => { observer.disconnect(); window.removeEventListener('resize', place) }
+  }, [chipRefs, index, containerRef])
+
+  // Close on Escape or a press outside the popover (pressing a word is
+  // handled by the word itself: it switches words or closes this one)
+  useEffect(() => {
+    function onPointerDown(e) {
+      if (popRef.current?.contains(e.target) || e.target.closest?.('.word-chip')) return
+      onClose()
+    }
+    function onKeyDown(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      ref={popRef}
+      className={`word-popover ${pos ? `word-popover--${pos.placement}` : ''}`}
+      style={pos ? { left: pos.left, top: pos.top, '--arrow-x': `${pos.arrowX}px` } : { visibility: 'hidden' }}
+      role="dialog"
+      aria-label="Word score"
+    >
+      <PhonemePanel {...panelProps} onClose={onClose} />
+    </div>
+  )
+}
+
 function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
   const { word, score, errorType, phonemes, phoneticHeard } = wordData
   const color = scoreColor(score, errorType)
   const groups = splitHebrewToGroups(word)
-  // OpenAI returns natural Hebrew syllables (consonant+vowel groupings) — display
-  // those directly. Azure returns per-phoneme scores which we map onto letter groups.
-  const breakdownItems = provider === 'openai' && phonemes?.length > 0
-    ? phonemes.map(p => ({ chars: p.phoneme, score: p.accuracyScore ?? null }))
-    : mapPhonemesToGroups(groups, phonemes)
+  // The rules engine grades each syllable right or wrong (a skipped word's
+  // syllables are left unmarked). OpenAI (LLM) scores natural Hebrew syllables,
+  // shown directly; Azure's per-phoneme scores are mapped onto letter groups.
+  const breakdownItems = phonemes?.some(p => p.breakdown)
+    ? phonemes.map(p => ({ chars: p.phoneme, score: null, right: errorType === 'Omission' ? null : syllableRight(p) }))
+    : provider === 'openai' && phonemes?.length > 0
+      ? phonemes.map(p => ({ chars: p.phoneme, score: p.accuracyScore ?? null }))
+      : mapPhonemesToGroups(groups, phonemes)
   const isPerfect = groups.length === (phonemes?.length ?? 0)
 
   const [isPlaying, setIsPlaying] = useState(false)
@@ -112,7 +192,7 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
     <div className="phoneme-panel">
       <div className="phoneme-panel-header">
         <span className="phoneme-panel-badge" style={{ background: color }}>
-          {Math.round(score)}/100 — {scoreLabel(score, errorType)}
+          {Math.round(score)}/100 — {phonemes?.some(p => p.breakdown) ? wordLabel(wordData) : scoreLabel(score, errorType)}
         </span>
         {speechAvailable && (
           <button
@@ -139,13 +219,19 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
         <>
           <div className="char-breakdown" dir="rtl">
             {breakdownItems.map((item, i) => {
-              const cColor = item.score !== null ? scoreColor(item.score, 'None') : '#d6d3d1'
+              const cColor = item.right != null
+                ? (item.right ? '#16a34a' : '#dc2626')
+                : item.score != null ? scoreColor(item.score, 'None') : '#d6d3d1'
               return (
                 <div key={i} className="char-item">
                   <span className="char-glyph" style={{ color: cColor }} lang="he">
                     {item.chars}
                   </span>
-                  {item.score !== null && (
+                  {item.right != null ? (
+                    <span className="char-mark" style={{ color: cColor }} aria-label={item.right ? 'right' : 'wrong'}>
+                      {item.right ? '✓' : '✗'}
+                    </span>
+                  ) : item.score != null && (
                     <span className="char-score" style={{ color: cColor }}>
                       {Math.round(item.score)}
                     </span>
@@ -182,10 +268,36 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
   )
 }
 
-function ScoreRing({ value, label, text }) {
+const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+// A number that eases from where it was to `target`: from 0 when first shown,
+// so a new grade's rings fill up (after `delay` ms, while the results open)
+function useCountUp(target, { delay = 0, duration = 900 } = {}) {
+  const [shown, setShown] = useState(0)
+  const shownRef = useRef(0)
+  useEffect(() => {
+    const from = shownRef.current
+    const ms = prefersReducedMotion() ? 0 : duration
+    let raf
+    let start = null
+    function step(now) {
+      start ??= now
+      const t = ms ? Math.min(1, (now - start) / ms) : 1
+      shownRef.current = from + (target - from) * (1 - (1 - t) ** 3)
+      setShown(shownRef.current)
+      if (t < 1) raf = requestAnimationFrame(step)
+    }
+    const timer = setTimeout(() => { raf = requestAnimationFrame(step) }, ms ? delay : 0)
+    return () => { clearTimeout(timer); cancelAnimationFrame(raf) }
+  }, [target, delay, duration])
+  return shown
+}
+
+function ScoreRing({ value, label, format = v => Math.round(v), delay = 300 }) {
+  const shown = useCountUp(value, { delay })
   const radius = 28
   const circumference = 2 * Math.PI * radius
-  const offset = circumference - (value / 100) * circumference
+  const offset = circumference - (shown / 100) * circumference
   const color = value >= 80 ? '#16a34a' : value >= 60 ? '#d97706' : '#dc2626'
 
   return (
@@ -201,7 +313,7 @@ function ScoreRing({ value, label, text }) {
           transform="rotate(-90 36 36)"
         />
         <text x="36" y="41" textAnchor="middle" fontSize="14" fontWeight="600" fill={color}>
-          {text ?? Math.round(value)}
+          {format(shown)}
         </text>
       </svg>
       <span className="score-ring-label">{label}</span>
@@ -233,7 +345,7 @@ export default function App() {
   // Start-of-recording check for the current attempt (see utils/recordingCheck)
   const [recordingCheck, setRecordingCheck] = useState(null)
   // Results display: word-by-word verse vs. alphabetical letter breakdown
-  const [resultsView, setResultsView] = useState('words')
+  const [resultsView, setResultsView] = useState('score')
   const [provider, setProvider] = useState(() => {
     // Production testers only get OpenAI (Rules); the engine choice is dev-only
     if (!import.meta.env.DEV) return 'openai-rules'
@@ -260,6 +372,8 @@ export default function App() {
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
+  const pasukCardRef = useRef(null)
+  const chipRefs = useRef([]) // the verse's word chips, for placing the word popover
   const mediaRecorderRef = useRef(null)
   const sharedStreamRef = useRef(null)
   const audioChunksRef = useRef([])
@@ -509,6 +623,7 @@ export default function App() {
           if (window.innerWidth > 640) setShowHistory(true)
         })
         setPhase('done')
+        setResultsView('score')
         setScores(scores)
         setWordResults(reconciled)
       },
@@ -551,6 +666,7 @@ export default function App() {
       addToHistory(reconciled, scores, audioUrl, [rawSegment], check)
       if (window.innerWidth > 640) setShowHistory(true)
       setPhase('done')
+      setResultsView('score')
       setScores(scores)
       setWordResults(reconciled)
     } catch (err) {
@@ -579,6 +695,7 @@ export default function App() {
     setCurrentRawSegments([rawSegment])
     addToHistory(reconciled, scores, null, [rawSegment])
     setPhase('done')
+    setResultsView('score')
     setScores(scores)
     setWordResults(reconciled)
     if (window.innerWidth > 640) setShowHistory(true)
@@ -725,7 +842,7 @@ export default function App() {
         )}
 
         {activeTab === 'practice' && (
-        <main className="app-main">
+        <main className="app-main app-main--practice">
           <div className="pasuk-selector">
             <label htmlFor="pasuk-select">Verse</label>
             <select
@@ -834,7 +951,9 @@ export default function App() {
             </div>
           )}
 
-          <div className="pasuk-card">
+          <div className="practice-layout">
+          <div className="practice-main">
+          <div className="pasuk-card" ref={pasukCardRef}>
             {(phase === 'done' || viewingHistoryEntry) && displayRecordingCheck?.cutOff && (
               <p className="recording-warning">
                 The start of this recording may have been cut off — you were already speaking when the
@@ -850,6 +969,7 @@ export default function App() {
                         {...w}
                         isSelected={selectedWordIdx === i}
                         onClick={() => handleWordClick(i)}
+                        chipRef={el => { chipRefs.current[i] = el }}
                         showScore
                       />
                       {/* A maqef part stays joined to the next word, as in the verse */}
@@ -860,77 +980,6 @@ export default function App() {
                 : <span>{pasuk.text.replaceAll('־', '־\u2060')}</span>
               }
             </div>
-            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && (
-              <div className="results-view-toggle">
-                <button
-                  className={`results-view-btn ${resultsView === 'words' ? 'results-view-btn--active' : ''}`}
-                  onClick={() => setResultsView('words')}
-                >
-                  Words
-                </button>
-                <button
-                  className={`results-view-btn ${resultsView === 'letters' ? 'results-view-btn--active' : ''}`}
-                  onClick={() => setResultsView('letters')}
-                >
-                  By letter
-                </button>
-              </div>
-            )}
-            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && resultsView === 'letters' && (
-              <LetterBreakdown wordResults={displayWords} />
-            )}
-            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && resultsView === 'words' && (() => {
-              const issues = displayWords
-                .map((w, idx) => ({ word: w, idx }))
-                .filter(({ word }) => word.errorType !== 'None' || word.phonemes?.some(p => p.note))
-              if (issues.length === 0) {
-                return <p className="click-hint">All words scored cleanly. Click any word to see the breakdown.</p>
-              }
-              return (
-                <div className="word-issues">
-                  <div className="word-issues-header">Issues to work on</div>
-                  <ul className="word-issues-list">
-                    {issues.map(({ word, idx }) => {
-                      const notes = (word.phonemes ?? []).filter(p => p.note)
-                      return (
-                        <li key={idx} className="word-issues-item">
-                          <div className="word-issues-head">
-                            <button
-                              className="word-issues-word"
-                              dir="rtl"
-                              lang="he"
-                              onClick={() => handleWordClick(idx)}
-                            >
-                              {word.word}
-                            </button>
-                            {word.phoneticHeard && word.errorType !== 'Omission' && (
-                              <span className="word-issues-heard">heard: <code>{word.phoneticHeard}</code></span>
-                            )}
-                          </div>
-                          {word.errorType === 'Omission'
-                            ? <span className="word-issues-omission">— skipped</span>
-                            : word.errorType === 'Insertion'
-                              ? <span className="word-issues-omission">— extra word</span>
-                              : notes.length > 0
-                                ? <ul className="word-issues-notes">
-                                    {notes.map((n, j) => (
-                                      <li key={j}>
-                                        <span className="word-issues-syllable" dir="rtl" lang="he">{n.phoneme}</span>
-                                        <span className="word-issues-note">{n.note}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                : <span className="word-issues-omission">— marked incorrect</span>
-                          }
-                        </li>
-                      )
-                    })}
-                  </ul>
-                  {/* Rules-engine notes spell sounds with the sound key */}
-                  {displayWords.some(w => w.phonemes?.some(p => p.breakdown)) && <SoundGuide />}
-                </div>
-              )
-            })()}
             <div className="pasuk-meta">
               <div className="pasuk-meta-top">
                 <span className="pasuk-ref">{pasuk.reference}</span>
@@ -948,18 +997,162 @@ export default function App() {
                 )}
               </div>
             </div>
+            {(phase === 'done' || viewingHistoryEntry) && displayWords.length > 0 && (
+              // The grade of the verse above, opening below it
+              <section className="results-section">
+                <div className="results-section-body">
+                  <div className="results-view-toggle">
+                    <button
+                      className={`results-view-btn ${resultsView === 'score' ? 'results-view-btn--active' : ''}`}
+                      onClick={() => setResultsView('score')}
+                    >
+                      Score
+                    </button>
+                    <button
+                      className={`results-view-btn ${resultsView === 'words' ? 'results-view-btn--active' : ''}`}
+                      onClick={() => setResultsView('words')}
+                    >
+                      Words
+                    </button>
+                    <button
+                      className={`results-view-btn ${resultsView === 'letters' ? 'results-view-btn--active' : ''}`}
+                      onClick={() => setResultsView('letters')}
+                    >
+                      By letter
+                    </button>
+                  </div>
+                  {/* Kept mounted so its rings animate once per grade, not on every tab switch */}
+                  {displayScores && (
+                    <div className="score-view" hidden={resultsView !== 'score'}>
+                      {displayScores.wordsTotal != null ? (
+                        // Rules-engine modes: the word-based score and how many words were read correctly
+                        <>
+                          <div className="score-rings">
+                            <ScoreRing value={displayScores.pronunciation} label="Score" />
+                            <ScoreRing
+                              delay={450}
+                              value={(100 * displayScores.wordsCorrect) / displayScores.wordsTotal}
+                              format={v => `${Math.round((v * displayScores.wordsTotal) / 100)}/${displayScores.wordsTotal}`}
+                              label="Words correct"
+                            />
+                          </div>
+                          <p className="score-note">
+                            {displayScores.soundsRight} of {displayScores.soundsTotal} sounds right in the words read.
+                            Every word counts equally: a word is 100 when all its sounds are right,
+                            at most 80 with any mistake, and 0 if skipped.
+                          </p>
+                        </>
+                      ) : (() => {
+                        // Azure, OpenAI (LLM), and attempts saved before the word-based score.
+                        // Fluency is only measured by Azure, so its circle is shown for Azure only.
+                        const isAzure = (displayRawSegments[0]?.provider ?? 'azure') === 'azure'
+                        return (
+                          <>
+                            <div className="score-rings">
+                              <ScoreRing value={displayScores.pronunciation} label="Overall" />
+                              <ScoreRing value={displayScores.accuracy} label="Accuracy" />
+                              {isAzure && <ScoreRing value={displayScores.fluency} label="Fluency" />}
+                              <ScoreRing value={displayScores.completeness} label="Complete" />
+                            </div>
+                            <p className="score-note">
+                              {isAzure
+                                ? 'Scored by Azure: Overall combines accuracy, fluency and completeness.'
+                                : 'Overall = Accuracy (75%) + Completeness (25%).'}
+                            </p>
+                          </>
+                        )
+                      })()}
+
+                      {displayRawSegments[0]?.feedback && (
+                        <div className="feedback-banner">
+                          <span className="feedback-label">Feedback</span>
+                          <p className="feedback-text">{displayRawSegments[0].feedback}</p>
+                        </div>
+                      )}
+
+                      {displayRawSegments[0]?.transcription && (
+                        <div className="transcription-row">
+                          <span className="transcription-label">Heard</span>
+                          <span className="transcription-text">{displayRawSegments[0].transcription}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {resultsView === 'letters' && (
+                    <LetterBreakdown wordResults={displayWords} />
+                  )}
+                  {resultsView === 'words' && (() => {
+                    const issues = displayWords
+                      .map((w, idx) => ({ word: w, idx }))
+                      .filter(({ word }) => word.errorType !== 'None' || word.phonemes?.some(p => p.note))
+                    if (issues.length === 0) {
+                      return <p className="click-hint">All words scored cleanly. Click any word to see the breakdown.</p>
+                    }
+                    return (
+                      <div className="word-issues">
+                        <div className="word-issues-header">Issues to work on</div>
+                        <ul className="word-issues-list">
+                          {issues.map(({ word, idx }) => {
+                            const notes = (word.phonemes ?? []).filter(p => p.note)
+                            return (
+                              <li key={idx} className="word-issues-item">
+                                <div className="word-issues-head">
+                                  <button
+                                    className="word-issues-word"
+                                    dir="rtl"
+                                    lang="he"
+                                    onClick={() => handleWordClick(idx)}
+                                  >
+                                    {word.word}
+                                  </button>
+                                  {word.phoneticHeard && word.errorType !== 'Omission' && (
+                                    <span className="word-issues-heard">heard: <code>{word.phoneticHeard}</code></span>
+                                  )}
+                                </div>
+                                {word.errorType === 'Omission'
+                                  ? <span className="word-issues-omission">— skipped</span>
+                                  : word.errorType === 'Insertion'
+                                    ? <span className="word-issues-omission">— extra word</span>
+                                    : notes.length > 0
+                                      ? <ul className="word-issues-notes">
+                                          {notes.map((n, j) => (
+                                            <li key={j}>
+                                              <span className="word-issues-syllable" dir="rtl" lang="he">{n.phoneme}</span>
+                                              <span className="word-issues-note">{n.note}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      : <span className="word-issues-omission">— marked incorrect</span>
+                                }
+                              </li>
+                            )
+                          })}
+                        </ul>
+                        {/* Rules-engine notes spell sounds with the sound key */}
+                        {displayWords.some(w => w.phonemes?.some(p => p.breakdown)) && <SoundGuide />}
+                      </div>
+                    )
+                  })()}
+                </div>
+              </section>
+            )}
+            {selectedWordIdx !== null && displayWords[selectedWordIdx] && (
+              <WordPopover
+                key={selectedWordIdx}
+                chipRefs={chipRefs}
+                index={selectedWordIdx}
+                containerRef={pasukCardRef}
+                wordData={displayWords[selectedWordIdx]}
+                provider={displayRawSegments[0]?.provider ?? 'azure'}
+                onClose={() => setSelectedWordIdx(null)}
+                speechAvailable={speechAvailable}
+              />
+            )}
+          </div>
           </div>
 
-          {selectedWordIdx !== null && displayWords[selectedWordIdx] && (
-            <PhonemePanel
-              wordData={displayWords[selectedWordIdx]}
-              provider={displayRawSegments[0]?.provider ?? 'azure'}
-              onClose={() => setSelectedWordIdx(null)}
-              speechAvailable={speechAvailable}
-            />
-          )}
-
-          <div className="controls">
+          {/* Beside the verse (under it, pinned to the screen's bottom, on narrow screens) */}
+          <aside className="controls">
             {viewingHistoryEntry ? (
               <div className="history-review-state">
                 <p className="history-review-label">Viewing Attempt #{viewingAttemptNumber}</p>
@@ -997,7 +1190,7 @@ export default function App() {
                       value={manualInput}
                       onChange={e => setManualInput(e.target.value)}
                       placeholder={`e.g. vayomer hashem el-avram lech-lecha…`}
-                      rows={2}
+                      rows={4}
                     />
                     <button
                       className="btn btn-record"
@@ -1071,63 +1264,8 @@ export default function App() {
                 )}
               </>
             )}
+          </aside>
           </div>
-
-          {displayScores && (
-            <div className="score-panel">
-              {displayScores.wordsTotal != null ? (
-                // Rules-engine modes: the word-based score and how many words were read correctly
-                <>
-                  <div className="score-rings">
-                    <ScoreRing value={displayScores.pronunciation} label="Score" />
-                    <ScoreRing
-                      value={(100 * displayScores.wordsCorrect) / displayScores.wordsTotal}
-                      text={`${displayScores.wordsCorrect}/${displayScores.wordsTotal}`}
-                      label="Words correct"
-                    />
-                  </div>
-                  <p className="score-note">
-                    {displayScores.soundsRight} of {displayScores.soundsTotal} sounds right in the words read.
-                    Every word counts equally: a word is 100 when all its sounds are right,
-                    at most 80 with any mistake, and 0 if skipped.
-                  </p>
-                </>
-              ) : (() => {
-                // Azure, OpenAI (LLM), and attempts saved before the word-based score.
-                // Fluency is only measured by Azure, so its circle is shown for Azure only.
-                const isAzure = (displayRawSegments[0]?.provider ?? 'azure') === 'azure'
-                return (
-                  <>
-                    <div className="score-rings">
-                      <ScoreRing value={displayScores.pronunciation} label="Overall" />
-                      <ScoreRing value={displayScores.accuracy} label="Accuracy" />
-                      {isAzure && <ScoreRing value={displayScores.fluency} label="Fluency" />}
-                      <ScoreRing value={displayScores.completeness} label="Complete" />
-                    </div>
-                    <p className="score-note">
-                      {isAzure
-                        ? 'Scored by Azure: Overall combines accuracy, fluency and completeness.'
-                        : 'Overall = Accuracy (75%) + Completeness (25%).'}
-                    </p>
-                  </>
-                )
-              })()}
-
-              {displayRawSegments[0]?.feedback && (
-                <div className="feedback-banner">
-                  <span className="feedback-label">Feedback</span>
-                  <p className="feedback-text">{displayRawSegments[0].feedback}</p>
-                </div>
-              )}
-
-              {displayRawSegments[0]?.transcription && (
-                <div className="transcription-row">
-                  <span className="transcription-label">Heard</span>
-                  <span className="transcription-text">{displayRawSegments[0].transcription}</span>
-                </div>
-              )}
-            </div>
-          )}
 
           {displayRawSegments.length > 0 && (
             <div className="debug-panel">

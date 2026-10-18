@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { psukim } from '../src/data/psukim.js'
 import { assessManual } from '../src/services/manualAssessment.js'
-import { computeWordScore } from '../src/utils/wordScore.js'
+import { computeWordScore, wordLabel } from '../src/utils/wordScore.js'
 
 const score = (pasukIdx, tradition, heard) =>
   computeWordScore(assessManual(psukim[pasukIdx].text, heard, { tradition }).words)
@@ -69,4 +69,18 @@ test('assessments report the word-based score as the verse score and on each wor
   assert.equal(scores.pronunciation, r.score)
   assert.deepEqual([scores.wordsCorrect, scores.wordsTotal, scores.soundsRight, scores.soundsTotal], [1, 8, 45, 56])
   assert.deepEqual(words.map(w => w.score), r.words.map(w => w.score))
+})
+
+test('word label names the one mistake, counts several, and marks repeats', () => {
+  const label = heard => {
+    const { words } = assessManual('וַיֹּאמֶר הַשֵּׁם אֶל־אַבְרָם', heard, { tradition: 'sephardic' })
+    return words.map(wordLabel)
+  }
+  assert.deepEqual(label('vayomer hashem el avram'), ['Correct', 'Correct', 'Correct', 'Correct'])
+  assert.deepEqual(label('vayomar hashem el avram'), ['Wrong vowel', 'Correct', 'Correct', 'Correct'])
+  assert.deepEqual(label('vayomer hasem el avram'), ['Correct', 'Wrong letter', 'Correct', 'Correct'])
+  assert.deepEqual(label('vayomer hashem hashem el avram'), ['Correct', 'Repeated', 'Correct', 'Correct'])
+  assert.deepEqual(label('vayomer el avram'), ['Correct', 'Skipped', 'Correct', 'Correct'])
+  assert.equal(label('vayomar hasham el avram')[1], 'Wrong vowel')
+  assert.match(label('vuyomar hashem el avram')[0], /^2 mistakes$/)
 })

@@ -17,7 +17,11 @@ import { callOpenAIAudio } from './openaiProxy.js'
 export async function transcribeAudio(audioBlob, referenceText) {
   const { content, model, usage } = await callOpenAIAudio('transcribe', audioBlob, referenceText)
   const cost = logUsage(usage)
+  return { transcription: parseTranscription(content), model, usage, cost }
+}
 
+// The transcription from the model's raw reply (a JSON object)
+export function parseTranscription(content) {
   const jsonStart = content.indexOf('{')
   const jsonEnd = content.lastIndexOf('}')
   if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
@@ -29,12 +33,17 @@ export async function transcribeAudio(audioBlob, referenceText) {
   try { parsed = JSON.parse(cleaned) }
   catch { throw new Error('OpenAI returned malformed JSON: ' + cleaned.slice(0, 200)) }
 
-  return { transcription: parsed.transcription ?? '', model, usage, cost }
+  return parsed.transcription ?? ''
 }
 
 export async function assessWithOpenAIRules(audioBlob, referenceText, settings = {}) {
   const { transcription, model, usage } = await transcribeAudio(audioBlob, referenceText)
+  return gradeTranscription(transcription, referenceText, settings, { model, usage })
+}
 
+// Grades a phonetic transcription against the verse with our rules engine.
+// Also used by scripts/generate-listen-audio.mjs to check the Listen readings.
+export function gradeTranscription(transcription, referenceText, settings = {}, { model = null, usage = null } = {}) {
   const referenceWords = referenceText.split(/\s+/).filter(Boolean)
 
   // Tokenize the model's transcription, then let DP alignment figure out which

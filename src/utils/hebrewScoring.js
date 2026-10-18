@@ -543,12 +543,14 @@ function alignPatachGenuvah(syl, remaining) {
   }
 }
 
-// What to tell the student about a syllable, from its match status: the note
-// ('' when it was read right) and the kind of each mistake in it (ISSUES in
-// wordScore.js), which the word's label names. Notes spell every sound with
-// the sound key (soundGuide.js): "ee" as in "see", not "i".
-const RIGHT = { note: '', issues: [] }
-const issue = (kind, note) => ({ note, issues: [kind] })
+// What to tell the student about a syllable, from its match status: its
+// problems, each { kind, count, text } — the kind of mistake (ISSUE_LABELS in
+// wordScore.js), how many mistakes it is (a skipped syllable is one per sound
+// it has), and what to say about it — and the note, all their texts together
+// ('' when it was read right). Notes spell every sound with the sound key
+// (soundGuide.js): "ee" as in "see", not "i".
+const RIGHT = { note: '', problems: [] }
+const issue = (kind, note) => ({ note, problems: [{ kind, count: 1, text: note }] })
 // A vowel note's kind: a vowel said differently, or one left out
 const vowelIssue = heardVowel => (heardVowel ? 'wrong-vowel' : 'missing-sound')
 
@@ -619,10 +621,8 @@ function syllableNote(m, tradition, shevaMode) {
 function skippedNote(m, tradition) {
   const sounds = [m.consonant && consonantSay(m.consonant), m.vowel && vowelSay(m, tradition)].filter(Boolean)
   const said = sounds.map(x => `"${x}"`).join(' and ')
-  return {
-    note: `Skipped ${m.display} — its ${said} ${sounds.length > 1 ? "weren't" : "wasn't"} heard.`,
-    issues: sounds.map(() => 'missing-sound'),
-  }
+  const note = `Skipped ${m.display} — its ${said} ${sounds.length > 1 ? "weren't" : "wasn't"} heard.`
+  return { note, problems: [{ kind: 'missing-sound', count: sounds.length, text: note }] }
 }
 
 // "The vowel is chirik: "ee" as in "see" — you said "oh" as in "go"."
@@ -667,7 +667,11 @@ function buildMismatchNote(m, tradition) {
       (other ? `, the sound of ${other}.` : '.')
   }
   if (!m.vowel || m.vowelMatched) return issue(kind, note)
-  return { note: `${note} ${vowelNote(m, tradition)}`, issues: [kind, vowelIssue(m.heardVowel)] }
+  const vowel = vowelNote(m, tradition)
+  return {
+    note: `${note} ${vowel}`,
+    problems: [{ kind, count: 1, text: note }, { kind: vowelIssue(m.heardVowel), count: 1, text: vowel }],
+  }
 }
 
 // Per-syllable sound breakdown for the sound-by-sound report. Each sound (the
@@ -704,7 +708,7 @@ function breakdownVowelName(seg) {
 // ── Public API ───────────────────────────────────────────────────────
 
 // Score a single word: returns { word, score, errorType, phoneticHeard,
-// expectedPhonetic, syllables: [{ phoneme, note, issues, breakdown }] }. A syllable
+// expectedPhonetic, syllables: [{ phoneme, note, problems, breakdown }] }. A syllable
 // is right when it has no note and all its sounds are right (syllableRight).
 export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, settings = {}) {
   const { tradition = 'sephardic', shevaMode = 'enforce' } = settings
@@ -731,7 +735,7 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
       syllables: syllables.map(s => ({
         phoneme: s.display,
         note: '',
-        issues: [],
+        problems: [],
         breakdown: makeBreakdown(s, false, false, tradition),
       })),
     }
@@ -756,7 +760,7 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
         scoredSyllables[i] = {
           ...ex,
           note: ex.note ? `${ex.note} ${trailingNote}` : trailingNote,
-          issues: [...ex.issues, 'extra-sound'],
+          problems: [...ex.problems, { kind: 'extra-sound', count: 1, text: trailingNote }],
         }
         break
       }

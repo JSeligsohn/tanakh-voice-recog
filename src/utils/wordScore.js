@@ -13,7 +13,7 @@
 //     count as right.
 //   - Each slip — an extra sound, a held vowel, a stutter, the word read out
 //     of place — is also one mistake.
-//   The mistakes are the ones the grader lists for each syllable (its issues),
+//   The mistakes are the ones the grader lists for each syllable (its problems),
 //   so the score, the word's label and its notes all count the same things.
 //   - A skipped word scores 0. A word never goes below 0, so neither does the verse.
 
@@ -45,11 +45,13 @@ export function wordScoreOf(w) {
   return { word: w.word, score, sounds, soundsRight, mistakes, skipped: false }
 }
 
-// A word's mistakes: the ones its syllables list (issues: one per wrong or
-// missing sound, and one per slip). Readings saved before mistakes were listed
-// count each wrong sound, and a note with no wrong sound as one slip.
+// A word's mistakes: the ones its syllables list (problems: one mistake per
+// wrong or missing sound, and one per slip). Readings saved before mistakes
+// were listed count each wrong sound, and a note with no wrong sound as one slip.
 function mistakesOf(w) {
-  if (w.phonemes.some(p => p.issues)) return w.phonemes.reduce((n, p) => n + (p.issues?.length ?? 0), 0)
+  if (w.phonemes.some(p => p.problems)) {
+    return w.phonemes.reduce((n, p) => n + (p.problems ?? []).reduce((k, x) => k + x.count, 0), 0)
+  }
   let mistakes = w.errorType === 'OutOfOrder' ? 1 : 0
   for (const p of w.phonemes) {
     const wrong = soundsOf(p).filter(s => !s.correct).length
@@ -60,8 +62,8 @@ function mistakesOf(w) {
   return mistakes
 }
 
-// The kinds of mistake a graded syllable can carry (its `issues`), as a word's
-// label names them
+// The kinds of mistake a graded syllable's problems can be, as a word's label
+// and each problem's tag name them
 const ISSUE_LABELS = {
   'wrong-letter': 'Wrong letter',
   'wrong-vowel': 'Wrong vowel',
@@ -80,6 +82,13 @@ const ISSUE_PLURALS = {
   'extra-sound': 'extra sounds',
 }
 
+// A problem's tag: "Wrong letter", or "2 missing sounds" for a syllable
+// skipped with both its sounds
+export function problemLabel({ kind, count }) {
+  if (count === 1) return ISSUE_LABELS[kind] ?? 'Mistake'
+  return `${count} ${ISSUE_PLURALS[kind] ?? 'mistakes'}`
+}
+
 // A graded word's label: "Correct", "Skipped", the kind of its one mistake
 // ("Wrong vowel"), or how many mistakes it has ("2 missing sounds", "3
 // mistakes") — the same mistakes the score counts, and the notes describe.
@@ -88,7 +97,7 @@ export function wordLabel(w) {
   if (w.errorType === 'Omission') return 'Skipped'
   const count = mistakesOf(w)
   if (count === 0) return 'Correct'
-  const kinds = [...new Set(w.phonemes.flatMap(p => p.issues ?? []))]
+  const kinds = [...new Set(w.phonemes.flatMap(p => (p.problems ?? []).map(x => x.kind)))]
   if (kinds.length === 1 && count === 1) return ISSUE_LABELS[kinds[0]] ?? '1 mistake'
   if (kinds.length === 1 && ISSUE_PLURALS[kinds[0]]) return `${count} ${ISSUE_PLURALS[kinds[0]]}`
   return count === 1 ? '1 mistake' : `${count} mistakes`

@@ -42,7 +42,7 @@ export function assessManual(referenceText, typedPhonetic, settings = {}) {
     phonemes: w.syllables.map(s => ({
       phoneme: s.phoneme,
       note: s.note,
-      issues: s.issues,
+      problems: s.problems,
       breakdown: s.breakdown,
     })),
   })), oldScores)

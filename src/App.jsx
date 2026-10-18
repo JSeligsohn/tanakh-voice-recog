@@ -18,6 +18,7 @@ import { checkRecording } from './utils/recordingCheck'
 import { entrySettings, settingsDiff } from './utils/historySettings'
 import LetterBreakdown from './components/LetterBreakdown'
 import SoundGuide from './components/SoundGuide'
+import SyllableProblems from './components/SyllableProblems'
 import ProgressView from './components/ProgressView'
 import TeacherRoster from './components/TeacherRoster'
 import { dummyStudents } from './data/progressDummy'
@@ -250,16 +251,7 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
             </p>
           ) : null}
 
-          {phonemes?.some(p => p.note) && (
-            <div className="syllable-notes">
-              {phonemes.filter(p => p.note).map((p, i) => (
-                <div key={i} className="syllable-note-row">
-                  <span className="syllable-note-glyph" dir="rtl" lang="he">{p.phoneme}</span>
-                  <span className="syllable-note-text">{p.note}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          {phonemes && <SyllableProblems phonemes={phonemes} className="syllable-problems--popover" />}
         </>
       ) : (
         <p className="phoneme-empty">No breakdown available for this word.</p>
@@ -1114,14 +1106,7 @@ export default function App() {
                                   : word.errorType === 'Insertion'
                                     ? <span className="word-issues-omission">— extra word</span>
                                     : notes.length > 0
-                                      ? <ul className="word-issues-notes">
-                                          {notes.map((n, j) => (
-                                            <li key={j}>
-                                              <span className="word-issues-syllable" dir="rtl" lang="he">{n.phoneme}</span>
-                                              <span className="word-issues-note">{n.note}</span>
-                                            </li>
-                                          ))}
-                                        </ul>
+                                      ? <SyllableProblems phonemes={word.phonemes} />
                                       : <span className="word-issues-omission">— marked incorrect</span>
                                 }
                               </li>

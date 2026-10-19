@@ -100,6 +100,8 @@ export const gradingCases = [
   { word: 'אֲנִי', heard: 'anii', flag: 'it\'s a short "ee" as in "see"', rule: 'vowel elongated' },
   { word: 'אַבְרָם', heard: 'avrami', flag: 'at the end of the word', rule: 'extra sound at the end' },
   { word: 'וַתַּהַר', heard: 'vatahr', flag: 'The vowel is patach: "ah" as in "father" — it was left out.', rule: 'vowel dropped' },
+  { word: 'וּמִבֵּית', heard: 'mibeit', trad: 'ashkenazic', flag: 'ת (sav, no dot) is "s"', notes: 2, rule: 'tav read "t" after a diphthong: a wrong letter, not missing + extra' },
+  { word: 'וּמִמּוֹלַדְתְּךָ', heard: 'mimoladekh', trad: 'ashkenazic', flag: 'Skipped ו', notes: 3, rule: 'shuruk ו left out, not read "mi"' },
 ]
 
 // Whole verses through Manual mode: word alignment across the verse.
@@ -151,6 +153,11 @@ export const verseCases = [
   {
     text: 'לֶךְ־לְךָ מֵאַרְצְךָ', heard: 'lech lecha meartsecha',
     expect: {}, rule: 'maqef word spoken as two tokens',
+  },
+  {
+    text: 'לֶךְ־לְךָ מֵאַרְצְךָ', heard: 'lekh lekh meartsekha',
+    expect: { 1: 'Mispronunciation' }, notes: { 1: 'kamatz' },
+    rule: 'a token said twice can be two words (לְךָ without its vowel), not a stutter',
   },
   {
     text: 'אֶל־הָאָרֶץ אֲשֶׁר', heard: 'el ha arets ka asher',

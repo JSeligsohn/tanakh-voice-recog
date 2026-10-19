@@ -28,22 +28,15 @@ function similarity(expected, heard) {
   return 1 - dist / Math.max(expected.length, heard.length)
 }
 
-// Collapse consecutive duplicate tokens (student stuttering the same syllable
-// or word). Returns { tokens, stutterMap } where stutterMap[i] is the number of
-// extra times the kept token was repeated by the student (0 = no stutter).
-function dedupeStutters(rawTokens) {
-  const tokens = []
-  const stutterMap = []
-  for (const t of rawTokens) {
-    if (tokens.length > 0 && tokens[tokens.length - 1] === t) {
-      stutterMap[stutterMap.length - 1]++
-    } else {
-      tokens.push(t)
-      stutterMap.push(0)
-    }
-  }
-  return { tokens, stutterMap }
-}
+// A token said again right after itself ("hashem hashem") is usually a
+// stutter, but not always: "lekh lekh" for לֶךְ־לְךָ is two words, the second
+// missing its vowel. So repeats stay in the token list and the DP decides —
+// dropping a repeat is free, matching it to the next word is scored as usual.
+const repeatsOf = tokens => tokens.map((t, j) => j > 0 && tokens[j - 1] === t)
+
+// The tokens [a, b) as one heard string, repeats inside the run left out
+const joinTokens = (tokens, repeats, a, b) =>
+  tokens.slice(a, b).filter((_, k) => k === 0 || !repeats[a + k]).join('')
 
 // Find the best mapping of student tokens onto reference words, allowing
 // omissions (skipped reference words), insertions (extra spoken words), and
@@ -55,8 +48,9 @@ function dedupeStutters(rawTokens) {
 // any of the matched tokens for that ref were repeated by the student, and
 // outOfOrder[refIdx] is true if the word was recovered from a different position
 // (see recoverSwappedWords).
-export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
-  const { tokens: studentTokens, stutterMap } = dedupeStutters(rawStudentTokens)
+export function alignByDP(referenceWords, studentTokens, settings = {}) {
+  const repeats = repeatsOf(studentTokens)
+  const join = (a, b) => joinTokens(studentTokens, repeats, a, b)
   const expected = referenceWords.map(w => {
     const atoms = tokenizeWord(w)
     return getExpectedPhonetic(atoms, settings).fullPhonetic
@@ -87,42 +81,17 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
         if (score > best) { best = score; bestMove = { type: 'skip-ref' } }
       }
       if (j > 0 && dp[i][j - 1] > NEG) {
-        const score = dp[i][j - 1] + SKIP_STUDENT
+        const score = dp[i][j - 1] + (repeats[j - 1] ? 0 : SKIP_STUDENT)
         if (score > best) { best = score; bestMove = { type: 'skip-student' } }
       }
-      if (i > 0 && j > 0 && dp[i - 1][j - 1] > NEG) {
-        const sim = similarity(expected[i - 1], studentTokens[j - 1])
-        if (sim >= MIN_SIM) {
-          const score = dp[i - 1][j - 1] + (2 * sim - 1)
-          if (score > best) { best = score; bestMove = { type: 'match', span: 1 } }
-        }
-      }
-      if (i > 0 && j > 1 && dp[i - 1][j - 2] > NEG) {
-        const combined = studentTokens[j - 2] + studentTokens[j - 1]
-        const sim = similarity(expected[i - 1], combined)
-        if (sim >= MIN_SIM) {
-          const score = dp[i - 1][j - 2] + (2 * sim - 1)
-          if (score > best) { best = score; bestMove = { type: 'match', span: 2 } }
-        }
-      }
-      if (i > 0 && j > 2 && dp[i - 1][j - 3] > NEG) {
-        const combined = studentTokens[j - 3] + studentTokens[j - 2] + studentTokens[j - 1]
-        const sim = similarity(expected[i - 1], combined)
-        if (sim >= MIN_SIM) {
-          const score = dp[i - 1][j - 3] + (2 * sim - 1)
-          if (score > best) { best = score; bestMove = { type: 'match', span: 3 } }
-        }
-      }
-      // Span 4 — useful for stuttered/repeated speech where dedupe still leaves
-      // many tokens for one intended word
-      if (i > 0 && j > 3 && dp[i - 1][j - 4] > NEG) {
-        const combined =
-          studentTokens[j - 4] + studentTokens[j - 3] + studentTokens[j - 2] + studentTokens[j - 1]
-        const sim = similarity(expected[i - 1], combined)
-        if (sim >= MIN_SIM) {
-          const score = dp[i - 1][j - 4] + (2 * sim - 1)
-          if (score > best) { best = score; bestMove = { type: 'match', span: 4 } }
-        }
+      // 1-4 student tokens for one word — more than one where the speaker's
+      // tokenization doesn't match Hebrew's, or a word was stuttered
+      for (let span = 1; span <= 4 && span <= j; span++) {
+        if (i === 0 || dp[i - 1][j - span] === NEG) continue
+        const sim = similarity(expected[i - 1], join(j - span, j))
+        if (sim < MIN_SIM) continue
+        const score = dp[i - 1][j - span] + (2 * sim - 1)
+        if (score > best) { best = score; bestMove = { type: 'match', span } }
       }
 
       // A run of maqef-joined words heard together: scored as that many
@@ -131,7 +100,7 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
         const exp = expected.slice(i - r, i).join('')
         for (let span = 1; span <= 4 && span <= j; span++) {
           if (dp[i - r][j - span] === NEG) continue
-          const sim = similarity(exp, studentTokens.slice(j - span, j).join(''))
+          const sim = similarity(exp, join(j - span, j))
           if (sim < MIN_SIM) continue
           const score = dp[i - r][j - span] + r * (2 * sim - 1)
           if (score > best) { best = score; bestMove = { type: 'match', span, words: r } }
@@ -149,37 +118,45 @@ export function alignByDP(referenceWords, rawStudentTokens, settings = {}) {
   const spanByRef = new Array(N).fill(null) // [first, last+1) student token indices
   const stutters = new Array(N).fill(false)
   const skippedTokens = [] // { j, refPos } — student tokens the DP left unassigned
+  const refOfToken = new Array(M).fill(-1)
+  const markSpan = (a, b, r) => {
+    for (let k = a; k < b; k++) {
+      refOfToken[k] = r
+      if (k > a && repeats[k]) stutters[r] = true
+    }
+  }
   let i = N, j = M
   while (i > 0 || j > 0) {
     const mv = back[i][j]
     if (!mv) break
     if (mv.type === 'match' && mv.words) {
       const first = i - mv.words
-      const heard = studentTokens.slice(j - mv.span, j).join('')
       // No spanByRef: stray-prefix moves need one word per span of tokens
-      splitHeardAcrossWords(referenceWords.slice(first, i), heard, settings)
+      splitHeardAcrossWords(referenceWords.slice(first, i), join(j - mv.span, j), settings)
         .forEach((part, k) => { heardByRef[first + k] = part })
-      for (let k = j - mv.span; k < j; k++) {
-        if (stutterMap[k] > 0) { stutters[first] = true; break }
-      }
+      markSpan(j - mv.span, j, first)
       i = first; j -= mv.span
     } else if (mv.type === 'match') {
       const span = mv.span
-      heardByRef[i - 1] = studentTokens.slice(j - span, j).join('')
+      heardByRef[i - 1] = join(j - span, j)
       spanByRef[i - 1] = [j - span, j]
-      // Any of the matched tokens were stuttered?
-      for (let k = j - span; k < j; k++) {
-        if (stutterMap[k] > 0) { stutters[i - 1] = true; break }
-      }
+      markSpan(j - span, j, i - 1)
       i--; j -= span
     } else if (mv.type === 'skip-ref') {
       i--
     } else {
-      skippedTokens.push({ j: j - 1, refPos: i })
+      if (!repeats[j - 1]) skippedTokens.push({ j: j - 1, refPos: i })
       j--
     }
   }
-  moveStrayPrefixes(expected, studentTokens, heardByRef, spanByRef)
+  // A dropped repeat is a stutter on the word its first saying went to
+  for (let k = 0; k < M; k++) {
+    if (repeats[k] && refOfToken[k] === -1 && refOfToken[k - 1] >= 0) {
+      refOfToken[k] = refOfToken[k - 1]
+      stutters[refOfToken[k]] = true
+    }
+  }
+  moveStrayPrefixes(expected, studentTokens, repeats, heardByRef, spanByRef)
   const unassigned = attachStrayPrefixes(expected, studentTokens, heardByRef, spanByRef, skippedTokens)
   const outOfOrder = recoverSwappedWords(expected, studentTokens, heardByRef, unassigned)
   return { heardByRef, stutters, outOfOrder }
@@ -195,14 +172,14 @@ const PREFIX_SYLLABLE = /^(h[ae]|v[aei]|u|b[aei]|k[aei]|l[aei]|m[aei]|sh[ae])$/
 // attach to the start of a word, so when a word's last token is a prefix
 // syllable that doesn't belong to it, move it to the start of the next word.
 // Mutates heardByRef and spanByRef.
-function moveStrayPrefixes(expected, studentTokens, heardByRef, spanByRef) {
+function moveStrayPrefixes(expected, studentTokens, repeats, heardByRef, spanByRef) {
   for (let r = 0; r < expected.length - 1; r++) {
     const span = spanByRef[r]
     const next = spanByRef[r + 1]
     if (!span || !next || span[1] - span[0] < 2 || next[0] !== span[1]) continue
     const last = studentTokens[span[1] - 1]
     if (!PREFIX_SYLLABLE.test(last)) continue
-    const without = studentTokens.slice(span[0], span[1] - 1).join('')
+    const without = joinTokens(studentTokens, repeats, span[0], span[1] - 1)
     if (similarity(expected[r], without) <= similarity(expected[r], heardByRef[r])) continue
     heardByRef[r] = without
     heardByRef[r + 1] = last + heardByRef[r + 1]

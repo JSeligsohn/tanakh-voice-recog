@@ -182,19 +182,21 @@ function matchAnyVariant(remaining, expected) {
 
 // Pick which of a syllable's accepted variants the student said at the start of
 // `remaining`: the SHORTEST one whose tail leaves the next syllable able to
-// start, else the shortest that matches at all. This stops a longer variant
+// start, else the LONGEST that matches at all. This stops a longer variant
 // from eating chars that belong to the next syllable. Example: רֹעִי "roi" —
 // use "ro" for cholam (not "roi"), so the chirik syllable can claim its "i".
 // With no audible syllable left, prefer the variant that ends the word ("aniy").
+// When the next syllable is misread anyway, the whole vowel is this one's:
+// Ashkenazic בֵּית read "beit" is "bei" + a wrong "t", not "be" + a stray "i".
 function pickVariant(remaining, variants, nextSyl) {
-  let firstMatch = null
+  let longest = null
   for (const v of variants.slice().sort((a, b) => a.length - b.length)) {
     if (!v || !cleanMatch(remaining, v)) continue
-    if (!firstMatch) firstMatch = v
+    longest = v
     const tail = remaining.slice(v.length)
     if (nextSyl ? nextSyllableCanStartAt(tail, nextSyl) : tail === '') return v
   }
-  return firstMatch
+  return longest
 }
 
 // Same disambiguation but for indexOf (look-ahead matching)
@@ -479,13 +481,16 @@ function alignSyllables(syllables, studentPhonetic) {
     // left it out ("ve'escha" for וְאֶעֶשְׂךָ drops one "e"). Reading it as a
     // wrong sound would consume the next syllable's sounds and throw every
     // later syllable out of step, so one slip showed up as three mistakes.
-    // Call it skipped only when the wrong-sound reading leaves the next
-    // syllable unable to start but what was said here is exactly the next
-    // syllable; a plain wrong letter ("rereshit") keeps the next in step.
+    // Call it skipped when what was said here is exactly the next syllable
+    // and the wrong-sound reading would leave the next one misread too
+    // ("mimoladekh" for וּמִמּוֹלַדְתְּךָ is a skipped וּ, not וּ said "mi" and מִ
+    // skipped); a plain wrong letter ("rereshit") keeps the next in step.
     const isProblem = status !== 'matched' && status !== 'vowel-elongated'
     if (isProblem && nextSyl) {
-      const wrongSoundFits = nextSyllableCanStartAt(remaining.slice(Math.max(1, consumed)), nextSyl)
-      const skipFits = (nextSyl.variants ?? [nextSyl.expected]).some(v => v && cleanMatch(remaining, v))
+      const nextVariants = nextSyl.variants ?? [nextSyl.expected]
+      const afterWrong = remaining.slice(Math.max(1, consumed))
+      const wrongSoundFits = nextVariants.some(v => v && cleanMatch(afterWrong, v))
+      const skipFits = nextVariants.some(v => v && cleanMatch(remaining, v))
       if (!wrongSoundFits && skipFits) {
         matches.push({
           ...syl,
@@ -650,6 +655,11 @@ function buildMismatchNote(m, tradition) {
     note = m.atom.isFinal && m.atom.dagesh
       ? `ה with a dot (mappiq) is said "h" — it wasn't heard.`
       : `ה is said "h" here — it wasn't heard.`
+  } else if (!expected && !heard) {
+    // A letter with no consonant sound (shuruk וּ, alef): only its vowel is wrong
+    if (!m.insertedBefore) return issue(vowelIssue(m.heardVowel), vowelNote(m, tradition))
+    kind = 'extra-sound'
+    note = `Extra "${latinToSay(m.insertedBefore)}" sound before ${m.display} — it shouldn't be there.`
   } else if (!expected && heard) {
     kind = 'extra-sound'
     note = `${L} is silent here — you said ${describe(heard)}.`

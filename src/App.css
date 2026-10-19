@@ -2277,6 +2277,40 @@
   color: #57534e;
 }
 
+/* ── Share for review (testers) ──────────── */
+.share-review {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.share-review .btn-listen {
+  justify-content: center;
+}
+
+.share-review-note {
+  font-size: 0.75rem;
+  color: #15803d;
+  text-align: center;
+}
+
+.share-review-link {
+  width: 100%;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+}
+
+@container (min-width: 780px) {
+  .controls .share-review {
+    align-items: stretch;
+  }
+}
+
 /* ── Tester note (practice page) ─────────── */
 .tester-note {
   margin: 0;

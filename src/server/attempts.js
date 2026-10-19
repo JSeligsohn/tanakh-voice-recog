@@ -33,6 +33,21 @@ export async function saveAttempt({ tester, audioBase64, ...details }) {
   return id
 }
 
+const readJson = async pathname => {
+  const file = await get(pathname, { access: 'private' })
+  return file?.stream ? JSON.parse(await new Response(file.stream).text()) : null
+}
+
+// One attempt's details, or null
+export async function getAttempt(id) {
+  if (!ID.test(id)) return null
+  try {
+    return await readJson(`${PREFIX}${id}.json`)
+  } catch {
+    return null
+  }
+}
+
 // The newest attempts' details (up to `limit`)
 export async function listAttempts(limit = 100) {
   const pathnames = []
@@ -43,14 +58,7 @@ export async function listAttempts(limit = 100) {
     cursor = page.hasMore ? page.cursor : undefined
   } while (cursor)
   const newest = pathnames.sort().reverse().slice(0, limit)
-  const metas = await Promise.all(newest.map(async pathname => {
-    try {
-      const file = await get(pathname, { access: 'private' })
-      return file?.stream ? JSON.parse(await new Response(file.stream).text()) : null
-    } catch {
-      return null
-    }
-  }))
+  const metas = await Promise.all(newest.map(pathname => readJson(pathname).catch(() => null)))
   return metas.filter(Boolean)
 }
 

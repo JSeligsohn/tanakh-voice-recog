@@ -18,9 +18,9 @@ import { callOpenAIAudio } from './openaiProxy.js'
 export async function transcribeAudio(audioBlob, referenceText, settings = {}) {
   // The settings don't change the transcription; they're saved with a
   // tester's recording so the Review page grades it as it was graded
-  const { content, model, usage } = await callOpenAIAudio('transcribe', audioBlob, referenceText, settings)
+  const { content, model, usage, attemptId = null } = await callOpenAIAudio('transcribe', audioBlob, referenceText, settings)
   const cost = logUsage(usage)
-  return { transcription: parseTranscription(content), model, usage, cost }
+  return { transcription: parseTranscription(content), model, usage, cost, attemptId }
 }
 
 // The transcription from the model's raw reply (a JSON object)
@@ -40,13 +40,13 @@ export function parseTranscription(content) {
 }
 
 export async function assessWithOpenAIRules(audioBlob, referenceText, settings = {}) {
-  const { transcription, model, usage } = await transcribeAudio(audioBlob, referenceText, settings)
-  return gradeTranscription(transcription, referenceText, settings, { model, usage })
+  const { transcription, model, usage, attemptId } = await transcribeAudio(audioBlob, referenceText, settings)
+  return gradeTranscription(transcription, referenceText, settings, { model, usage, attemptId })
 }
 
 // Grades a phonetic transcription against the verse with our rules engine.
 // Also used by scripts/generate-listen-audio.mjs to check the Listen readings.
-export function gradeTranscription(transcription, referenceText, settings = {}, { model = null, usage = null } = {}) {
+export function gradeTranscription(transcription, referenceText, settings = {}, { model = null, usage = null, attemptId = null } = {}) {
   // Maqef-joined words are graded one by one (אֶל־אַבְרָם → אֶל־, אַבְרָם)
   const referenceWords = splitVerseWords(referenceText)
 
@@ -96,6 +96,8 @@ export function gradeTranscription(transcription, referenceText, settings = {}, 
   const rawSegment = {
     provider: 'openai-rules',
     model,
+    // A tester's saved attempt, for a review link (/?review=<id>)
+    ...(attemptId ? { attemptId } : {}),
     transcription,
     feedback,
     usage,

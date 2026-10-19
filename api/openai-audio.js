@@ -5,10 +5,11 @@
 // endpoint can't be used to send OpenAI arbitrary instructions.
 //
 // POST { task: 'transcribe' | 'assess', audio: base64 WAV, referenceText, settings, tester? }
-//   → { content, model, usage }   (content is the model's raw reply)
+//   → { content, model, usage, attemptId? }   (content is the model's raw reply)
 //
 // A tester's transcription (tester set: see src/utils/tester.js) is saved with
-// its recording for the Review page (src/server/attempts.js).
+// its recording for the Review page (src/server/attempts.js); attemptId is its
+// id, for a review link (/?review=<id>).
 
 import { TRANSCRIPTION_PROMPT, transcriptionUserMessage } from '../src/services/prompts/transcriptionPrompt.js'
 import { buildSystemPrompt, assessmentUserMessage } from '../src/services/prompts/assessmentPrompt.js'
@@ -83,9 +84,10 @@ export default {
     }
 
     // Save a tester's attempt for review. A failed save never fails the reading.
+    let attemptId = null
     if (task === 'transcribe' && cleanTesterName(tester) && storeConfigured()) {
       try {
-        await saveAttempt({
+        attemptId = await saveAttempt({
           tester, audioBase64: audio, referenceText, settings: safeSettings, ...reply,
           userAgent: request.headers.get('user-agent')?.slice(0, 200) ?? null,
         })
@@ -93,6 +95,6 @@ export default {
         console.error('[attempts] save failed:', err)
       }
     }
-    return Response.json(reply)
+    return Response.json(attemptId ? { ...reply, attemptId } : reply)
   },
 }

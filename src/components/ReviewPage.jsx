@@ -1,7 +1,8 @@
 // Review page (/?review): testers' saved attempts — listen to each recording,
 // see what the transcriber wrote back (its raw reply), and how the rules
-// engine grades it now. Asks once for the review password (REVIEW_KEY on the
-// server) and remembers it on this device.
+// engine grades it now. /?review=<id> is a tester's shared link to one attempt
+// ("Share for review" in the app), opened straight away. Asks once for the
+// review password (REVIEW_KEY on the server) and remembers it on this device.
 
 import { useCallback, useEffect, useState } from 'react'
 import { psukim } from '../data/psukim'
@@ -103,8 +104,8 @@ function AttemptDetails({ attempt, graded, reviewKey }) {
   )
 }
 
-function AttemptCard({ attempt, reviewKey, onDeleted }) {
-  const [open, setOpen] = useState(false)
+function AttemptCard({ attempt, reviewKey, onDeleted, startOpen = false }) {
+  const [open, setOpen] = useState(startOpen)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -165,7 +166,11 @@ function AttemptCard({ attempt, reviewKey, onDeleted }) {
   )
 }
 
+// The attempt a shared link points to (/?review=<id>), or null for the list
+const sharedId = () => new URLSearchParams(window.location.search).get('review') || null
+
 export default function ReviewPage() {
+  const [sharedAttemptId] = useState(sharedId)
   const [reviewKey, setReviewKey] = useState(readKey)
   const [draftKey, setDraftKey] = useState('')
   const [attempts, setAttempts] = useState(null)
@@ -173,14 +178,14 @@ export default function ReviewPage() {
   const [tester, setTester] = useState('all')
 
   const load = useCallback(key => {
-    review(key)
+    review(key, { query: sharedAttemptId ? `?id=${encodeURIComponent(sharedAttemptId)}` : '' })
       .then(res => res.json())
-      .then(data => { setError(''); setAttempts(data.attempts) })
+      .then(data => { setError(''); setAttempts(data.attempts ?? [data.attempt]) })
       .catch(err => {
         if (err.unauthorized) { saveKey(''); setReviewKey('') }
         setError(err.message)
       })
-  }, [])
+  }, [sharedAttemptId])
 
   useEffect(() => { if (reviewKey) load(reviewKey) }, [reviewKey, load])
 
@@ -220,6 +225,12 @@ export default function ReviewPage() {
           </form>
         ) : (
           <>
+            {sharedAttemptId ? (
+              <div className="review-toolbar">
+                <span className="review-muted">A shared attempt.</span>
+                <a className="review-link" href="/?review">All attempts →</a>
+              </div>
+            ) : (
             <div className="review-toolbar">
               <label>
                 Tester{' '}
@@ -233,6 +244,7 @@ export default function ReviewPage() {
                 Grades use today's rules. Testers join with a link like <code>/?tester=rafi</code>.
               </span>
             </div>
+            )}
             {error && <p className="review-error">{error}</p>}
             {attempts === null && !error && <p className="review-muted">Loading…</p>}
             {attempts?.length === 0 && <p className="review-muted">No saved attempts yet.</p>}
@@ -243,6 +255,7 @@ export default function ReviewPage() {
                   attempt={a}
                   reviewKey={reviewKey}
                   onDeleted={id => setAttempts(list => list.filter(x => x.id !== id))}
+                  startOpen={Boolean(sharedAttemptId)}
                 />
               ))}
             </ul>

@@ -2,11 +2,12 @@
 // the review password (REVIEW_KEY, set in Vercel) in the x-review-key header.
 //
 // GET                → { attempts: [details, newest first] }
+// GET ?id=<id>       → { attempt: details } (a shared review link)
 // GET ?audio=<id>    → the recording (audio/wav)
 // DELETE ?id=<id>    → { deleted: true }
 
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { listAttempts, attemptAudio, deleteAttempt, storeConfigured } from '../src/server/attempts.js'
+import { listAttempts, getAttempt, attemptAudio, deleteAttempt, storeConfigured } from '../src/server/attempts.js'
 
 const fail = (status, error) => Response.json({ error }, { status })
 
@@ -24,6 +25,11 @@ export default {
       const file = await attemptAudio(url.searchParams.get('audio'))
       if (!file) return fail(404, 'No recording for that attempt.')
       return new Response(file.stream, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'private, no-store' } })
+    }
+    if (request.method === 'GET' && url.searchParams.has('id')) {
+      const attempt = await getAttempt(url.searchParams.get('id'))
+      if (!attempt) return fail(404, 'No saved attempt with that link.')
+      return Response.json({ attempt }, { headers: { 'Cache-Control': 'private, no-store' } })
     }
     if (request.method === 'GET') {
       return Response.json({ attempts: await listAttempts() }, { headers: { 'Cache-Control': 'private, no-store' } })

@@ -286,6 +286,39 @@ function useCountUp(target, { delay = 0, duration = 900 } = {}) {
   return shown
 }
 
+// A tester's attempt is saved on the server (utils/tester.js): a link to it
+// on the Review page, to send to the team — through the phone's share sheet,
+// or copied. If neither works, the link is shown to copy by hand.
+function ShareReviewButton({ attemptId }) {
+  const [status, setStatus] = useState('idle') // idle | copied | manual
+  const url = `${window.location.origin}/?review=${attemptId}`
+
+  async function handleShare() {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Reading for review', url })
+        return
+      } catch (err) {
+        if (err.name === 'AbortError') return // closed the share sheet
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      setStatus('copied')
+    } catch {
+      setStatus('manual')
+    }
+  }
+
+  return (
+    <div className="share-review">
+      <button className="btn-listen" onClick={handleShare}>🔗 Share for review</button>
+      {status === 'copied' && <span className="share-review-note">Link copied — paste it to the team</span>}
+      {status === 'manual' && <input className="share-review-link" readOnly value={url} onFocus={e => e.target.select()} />}
+    </div>
+  )
+}
+
 function ScoreRing({ value, label, format = v => Math.round(v), delay = 300 }) {
   const shown = useCountUp(value, { delay })
   const radius = 28
@@ -1170,6 +1203,7 @@ export default function App() {
                   <button className="btn btn-reset" onClick={handleExitHistoryView}>← Back</button>
                   <button className="btn btn-record" onClick={() => { handleExitHistoryView(); handleReset(); }}>↺ Try Again</button>
                 </div>
+                {displayRawSegments[0]?.attemptId && <ShareReviewButton attemptId={displayRawSegments[0].attemptId} />}
               </div>
             ) : (
               <>
@@ -1246,6 +1280,7 @@ export default function App() {
                       </button>
                     )}
                     <button className="btn btn-reset" onClick={handleReset}>↺ Try Again</button>
+                    {displayRawSegments[0]?.attemptId && <ShareReviewButton attemptId={displayRawSegments[0].attemptId} />}
                   </div>
                 )}
 

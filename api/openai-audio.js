@@ -4,11 +4,16 @@
 // grading settings; prompts are built here from fixed templates, so this
 // endpoint can't be used to send OpenAI arbitrary instructions.
 //
-// POST { task: 'transcribe' | 'assess', audio: base64 WAV, referenceText, settings }
+// POST { task: 'transcribe' | 'assess', audio: base64 WAV, referenceText, settings, tester? }
 //   → { content, model, usage }   (content is the model's raw reply)
+//
+// A tester's transcription (tester set: see src/utils/tester.js) is saved with
+// its recording for the Review page (src/server/attempts.js).
 
 import { TRANSCRIPTION_PROMPT, transcriptionUserMessage } from '../src/services/prompts/transcriptionPrompt.js'
 import { buildSystemPrompt, assessmentUserMessage } from '../src/services/prompts/assessmentPrompt.js'
+import { saveAttempt, storeConfigured } from '../src/server/attempts.js'
+import { cleanTesterName } from '../src/utils/tester.js'
 
 const MODEL = 'gpt-audio-1.5'
 const MAX_AUDIO_BASE64 = 4_400_000   // Vercel caps request bodies at 4.5 MB
@@ -31,7 +36,7 @@ export default {
 
     let body
     try { body = await request.json() } catch { return fail(400, 'Request body must be JSON.') }
-    const { task, audio, referenceText, settings = {} } = body ?? {}
+    const { task, audio, referenceText, settings = {}, tester } = body ?? {}
 
     const spec = TASKS[task]
     if (!spec) return fail(400, 'Unknown task.')
@@ -71,10 +76,23 @@ export default {
       return fail(502, `OpenAI API error (${upstream.status}): ${detail}`)
     }
     const data = await upstream.json()
-    return Response.json({
+    const reply = {
       content: data.choices?.[0]?.message?.content ?? '',
       model: data.model ?? MODEL,
       usage: data.usage ?? null,
-    })
+    }
+
+    // Save a tester's attempt for review. A failed save never fails the reading.
+    if (task === 'transcribe' && cleanTesterName(tester) && storeConfigured()) {
+      try {
+        await saveAttempt({
+          tester, audioBase64: audio, referenceText, settings: safeSettings, ...reply,
+          userAgent: request.headers.get('user-agent')?.slice(0, 200) ?? null,
+        })
+      } catch (err) {
+        console.error('[attempts] save failed:', err)
+      }
+    }
+    return Response.json(reply)
   },
 }

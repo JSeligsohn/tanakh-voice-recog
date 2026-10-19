@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 
 // Server-only secrets read from .env for the local API (never VITE_-prefixed,
 // so Vite never copies them into the browser bundle).
-const SERVER_ENV = ['OPENAI_API_KEY', 'AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION']
+const SERVER_ENV = ['OPENAI_API_KEY', 'AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION', 'BLOB_READ_WRITE_TOKEN', 'REVIEW_KEY']
 
 // Serves the Vercel Functions in api/ during `npm run dev`, so local dev
 // works the same as production without the Vercel CLI. Each api/<name>.js

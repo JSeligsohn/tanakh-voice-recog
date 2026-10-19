@@ -4,6 +4,7 @@
 // Returns { content, model, usage }, where content is the model's raw reply.
 
 import { blobToWavBase64 } from '../utils/wav.js'
+import { currentTester } from '../utils/tester.js'
 
 const MAX_AUDIO_BASE64 = 4_400_000 // keep in step with the server limit
 
@@ -16,7 +17,8 @@ export async function callOpenAIAudio(task, audioBlob, referenceText, settings =
   const response = await fetch('/api/openai-audio', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ task, audio, referenceText, settings }),
+    // A tester's recordings are saved for review (utils/tester.js)
+    body: JSON.stringify({ task, audio, referenceText, settings, tester: currentTester() }),
   })
   let data = null
   try { data = await response.json() } catch { /* non-JSON error page */ }

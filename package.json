@@ -12,6 +12,7 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
     "esbuild": "^0.28.0",
     "microsoft-cognitiveservices-speech-sdk": "^1.50.0",
     "react": "^19.2.6",

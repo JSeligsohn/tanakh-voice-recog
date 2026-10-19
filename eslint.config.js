@@ -20,7 +20,7 @@ export default defineConfig([
   },
   {
     // Server-side code (Vercel Functions, Vite config) and tests run in Node
-    files: ['api/**/*.js', 'dev/**/*.js', 'vite.config.js', 'test/**/*.js'],
+    files: ['api/**/*.js', 'src/server/**/*.js', 'dev/**/*.js', 'vite.config.js', 'test/**/*.js'],
     languageOptions: { globals: { ...globals.node } },
   },
 ])

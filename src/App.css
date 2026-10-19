@@ -2276,3 +2276,255 @@
 .sound-guide-as-in {
   color: #57534e;
 }
+
+/* ── Tester note (practice page) ─────────── */
+.tester-note {
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.8rem;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 8px;
+}
+
+/* ── Review page (/?review) ──────────────── */
+.review-main {
+  max-width: 900px;
+}
+
+.review-signin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem;
+  background: white;
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
+}
+
+.review-signin label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.review-signin input {
+  flex: 1;
+  min-width: 180px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.review-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.review-toolbar select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #d6d3d1;
+  border-radius: 6px;
+  font: inherit;
+  background: white;
+}
+
+.review-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.review-card {
+  background: white;
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.review-card-head {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
+  padding: 0.8rem 1rem;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  color: #1c1917;
+}
+
+.review-card-head:hover { background: #fbf9f6; }
+
+.review-when { color: #57534e; min-width: 7.5rem; }
+.review-tester { font-weight: 700; color: #7c1d1d; }
+.review-verse { font-weight: 600; }
+.review-settings { color: #78716c; font-size: 0.8rem; }
+.review-score { margin-left: auto; font-weight: 700; }
+.review-chevron { color: #a8a29e; }
+
+.review-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.25rem 1rem 1rem;
+  border-top: 1px solid #f5f5f4;
+}
+
+.review-audio {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.review-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.review-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7c1d1d;
+}
+
+.review-transcription {
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  background: #f5f0e8;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+}
+
+.review-words {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 1.5rem;
+  line-height: 1.9;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+}
+
+.review-word {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.review-word-score {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.review-word-text {
+  border-bottom: 3px solid;
+  padding: 0 2px;
+}
+
+.review-issues {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.review-issue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.review-issue-word {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #7c1d1d;
+}
+
+.review-issue-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.review-muted {
+  color: #78716c;
+  font-size: 0.8rem;
+}
+
+.review-muted code {
+  font-family: 'Courier New', monospace;
+}
+
+.review-error {
+  color: #dc2626;
+  font-size: 0.85rem;
+}
+
+.review-link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: #7c1d1d;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.review-raw {
+  max-height: 360px;
+  overflow: auto;
+  padding: 0.75rem;
+  background: #1c1917;
+  color: #e7e5e4;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.review-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: #fbf9f6;
+  border-top: 1px solid #f5f5f4;
+}
+
+.review-delete {
+  margin-left: auto;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  background: white;
+  color: #b91c1c;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.review-delete--confirm {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: white;
+}

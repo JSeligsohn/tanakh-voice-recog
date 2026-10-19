@@ -10,6 +10,7 @@ import { isSpeechAvailable } from './services/azureAuth'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import { splitVerseWords } from './utils/hebrewRules'
 import { syllableRight, wordLabel } from './utils/wordScore'
+import { currentTester } from './utils/tester'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
 import VoiceLab from './components/VoiceLab'
@@ -338,6 +339,8 @@ export default function App() {
   const [recordingCheck, setRecordingCheck] = useState(null)
   // Results display: word-by-word verse vs. alphabetical letter breakdown
   const [resultsView, setResultsView] = useState('score')
+  // A tester's recordings are saved for review (utils/tester.js)
+  const [tester] = useState(currentTester)
   const [provider, setProvider] = useState(() => {
     // Production testers only get OpenAI (Rules); the engine choice is dev-only
     if (!import.meta.env.DEV) return 'openai-rules'
@@ -835,6 +838,11 @@ export default function App() {
 
         {activeTab === 'practice' && (
         <main className="app-main app-main--practice">
+          {tester && (
+            <p className="tester-note">
+              Testing as <strong>{tester}</strong> — your recordings are saved so the team can listen to them.
+            </p>
+          )}
           <div className="pasuk-selector">
             <label htmlFor="pasuk-select">Verse</label>
             <select

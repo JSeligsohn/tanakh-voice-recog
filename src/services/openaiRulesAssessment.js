@@ -15,8 +15,10 @@ import { callOpenAIAudio } from './openaiProxy.js'
 // Audio → phonetic transcription only, with the production prompt. Shared by
 // assessment and the dev Transcription check page, so the check measures
 // exactly what students get. Returns { transcription, model, usage, cost }.
-export async function transcribeAudio(audioBlob, referenceText) {
-  const { content, model, usage } = await callOpenAIAudio('transcribe', audioBlob, referenceText)
+export async function transcribeAudio(audioBlob, referenceText, settings = {}) {
+  // The settings don't change the transcription; they're saved with a
+  // tester's recording so the Review page grades it as it was graded
+  const { content, model, usage } = await callOpenAIAudio('transcribe', audioBlob, referenceText, settings)
   const cost = logUsage(usage)
   return { transcription: parseTranscription(content), model, usage, cost }
 }
@@ -38,7 +40,7 @@ export function parseTranscription(content) {
 }
 
 export async function assessWithOpenAIRules(audioBlob, referenceText, settings = {}) {
-  const { transcription, model, usage } = await transcribeAudio(audioBlob, referenceText)
+  const { transcription, model, usage } = await transcribeAudio(audioBlob, referenceText, settings)
   return gradeTranscription(transcription, referenceText, settings, { model, usage })
 }
 

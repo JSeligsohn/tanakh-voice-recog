@@ -183,8 +183,9 @@ export function determineShevaType(atoms, index) {
   if (next?.vowel === 'sheva') return 'nach'
   if (prev?.vowel === 'sheva') return 'na'
 
-  // S4: under the first of two identical consecutive letters (הִנְנִי "hineni")
-  if (next?.letter === atom.letter) return 'na'
+  // S4: under the first of two identical consecutive letters (הִנְנִי "hineni"),
+  // a final form included (וַאֲבָרֶכְךָ "va'avarechecha")
+  if (next && (FINAL_TO_BASE[next.letter] ?? next.letter) === (FINAL_TO_BASE[atom.letter] ?? atom.letter)) return 'na'
 
   // S7: under a doubled letter (dagesh chazak after a vowel): strictly vocal,
   // as the doubling opens a syllable (הַמְּלָכִים "hamelachim"), but many readers

@@ -637,6 +637,16 @@ function vowelNote(m, tradition) {
   return heard ? `${expected} — you said ${heard}.` : `${expected} — it was left out.`
 }
 
+// A word that starts with ב, כ, פ or ת printed without a dot has lost its
+// dagesh because the word before ends in a vowel and runs into it (צַוְּארֵי
+// בִנְיָמִן, וַיְהִי־כֵן). Readers often say the hard sound they know from the
+// word on its own ("Binyamin", "ken"); that's still a mistake, so the note
+// explains why the letter is soft here.
+const HARD_SOUND = { 'ב': 'b', 'כ': 'k', 'פ': 'p', 'ת': 't' }
+const softAfterVowel = (atom, heardConsonant) =>
+  atom.wordStart && !atom.dagesh && HARD_SOUND[atom.letter] === heardConsonant
+const SOFT_AFTER_VOWEL_TIP = 'Tip: this word has no dot here because the word before it ends in a vowel and runs into it, so the letter is soft — read it as printed, even if you know the word with a hard sound.'
+
 // A wrong letter: the letter (with the marks that decide its sound), its sound,
 // what was said instead, and — when that's another letter's sound — which
 // letter: "בּ (bet, with a dot) is "b" as in "boy" — you said "v" as in
@@ -674,7 +684,8 @@ function buildMismatchNote(m, tradition) {
     kind = 'wrong-letter'
     const other = soundOfOtherLetter(m.atom, heard, tradition)
     note = `${letterLabel(m.atom, tradition)} is ${describe(expected)} — you said ${describe(heard)}` +
-      (other ? `, the sound of ${other}.` : '.')
+      (other ? `, the sound of ${other}.` : '.') +
+      (softAfterVowel(m.atom, m.heardConsonant) ? ` ${SOFT_AFTER_VOWEL_TIP}` : '')
   }
   if (!m.vowel || m.vowelMatched) return issue(kind, note)
   const vowel = vowelNote(m, tradition)

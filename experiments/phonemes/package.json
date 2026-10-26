@@ -1,0 +1,9 @@
+{
+  "name": "phoneme-experiment",
+  "private": true,
+  "type": "module",
+  "description": "Local test: can a phoneme recognizer (wav2vec2 XLSR-53 espeak, ONNX) hear the shin/sin and dagesh mistakes the audio transcriber misses?",
+  "dependencies": {
+    "onnxruntime-node": "^1.30.0"
+  }
+}

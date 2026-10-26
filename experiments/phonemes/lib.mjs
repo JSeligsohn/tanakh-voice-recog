@@ -129,7 +129,7 @@ function testedLetter(atom, sound) {
   if (L === 'ב') return atom.dagesh ? 'bet' : 'vet'
   if ((L === 'כ' || L === 'ך')) return atom.dagesh ? 'kaf' : 'khaf'
   if ((L === 'פ' || L === 'ף')) return atom.dagesh ? 'pe' : 'fe'
-  if (L === 'ת' && !atom.dagesh && sound === 's') return 'sav'
+  if (L === 'ת') return sound === 's' ? 'sav' : 'tav'
   return null
 }
 

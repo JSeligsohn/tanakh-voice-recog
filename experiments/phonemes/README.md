@@ -41,6 +41,15 @@ done   # model.onnx is 1.26 GB
 - `node run-verses.mjs`: those plus the 163 Listen clips in `voice-library/`
   (correct text, generated voices), to count false flags.
 
+## Test bench
+
+`node bench/server.mjs`, then open http://127.0.0.1:8790. Each item in
+`bench/items.mjs` is recorded twice: as written, and with a stated mistake.
+The page shows at once what was flagged, and whether that's what should have
+happened. Takes are saved, labelled, in `data/bench/` (`results.json` has the
+latest result for each). Vowel and sheva items are saved for the vowel step
+and aren't scored yet.
+
 ## Results, 2026-10-26
 
 - **Pairs:** 30 of 30 sorted correctly (15 words × right and wrong).

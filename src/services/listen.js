@@ -10,8 +10,15 @@ export function listenUrl(pasukId, tradition) {
   return file ? import.meta.env.BASE_URL + file : null
 }
 
-// Plays a recording; returns a cancel function
-export function playRecording(url, { onEnd, onError } = {}) {
+// The ElevenLabs reading of a verse (api/listen.js), made the first time it's
+// asked for. Testers only for now: the ElevenLabs free plan isn't licensed for
+// students, so everyone else hears the recordings above.
+export const elevenLabsUrl = (pasukId, tradition) =>
+  `/api/listen?pasuk=${encodeURIComponent(pasukId)}&tradition=${tradition}`
+
+// Plays a recording; returns a cancel function. onStart: the sound begins
+// (a reading made on request can take a few seconds to arrive).
+export function playRecording(url, { onStart, onEnd, onError } = {}) {
   const audio = new Audio(url)
   let finished = false
   function finish(err) {
@@ -21,6 +28,7 @@ export function playRecording(url, { onEnd, onError } = {}) {
     if (err) onError?.(err)
     else onEnd?.()
   }
+  audio.onplaying = () => { if (!finished) onStart?.() }
   audio.onended = () => finish()
   audio.onerror = () => finish('Audio playback failed.')
   audio.play().catch(e => finish(e.message))

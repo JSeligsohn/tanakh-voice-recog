@@ -4,7 +4,7 @@
 // grading settings; prompts are built here from fixed templates, so this
 // endpoint can't be used to send OpenAI arbitrary instructions.
 //
-// POST { task: 'transcribe' | 'assess', audio: base64 WAV, referenceText, settings, tester? }
+// POST { task: 'transcribe' | 'assess', audio: base64 WAV (or MP3 with format: 'mp3'), referenceText, settings, tester? }
 //   → { content, model, usage, attemptId? }   (content is the model's raw reply)
 //
 // A tester's transcription (tester set: see src/utils/tester.js) is saved with
@@ -37,7 +37,7 @@ export default {
 
     let body
     try { body = await request.json() } catch { return fail(400, 'Request body must be JSON.') }
-    const { task, audio, referenceText, settings = {}, tester } = body ?? {}
+    const { task, audio, format, referenceText, settings = {}, tester } = body ?? {}
 
     const spec = TASKS[task]
     if (!spec) return fail(400, 'Unknown task.')
@@ -64,7 +64,7 @@ export default {
             role: 'user',
             content: [
               { type: 'text', text: spec.user(referenceText) },
-              { type: 'input_audio', input_audio: { data: audio, format: 'wav' } },
+              { type: 'input_audio', input_audio: { data: audio, format: format === 'mp3' ? 'mp3' : 'wav' } },
             ],
           },
         ],

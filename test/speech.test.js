@@ -7,13 +7,15 @@ import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import openaiSpeech from '../dev/openai-speech.js'
 import { respellAshkenazi, respellCareful } from '../src/utils/hebrewRespell.js'
-import { romanize } from '../src/utils/hebrewRomanize.js'
+import { romanize, ipa } from '../src/utils/hebrewRomanize.js'
+import listen from '../api/listen.js'
 import { SPEECH_VARIANTS, buildSpeechRequest } from '../src/services/prompts/speechPrompts.js'
 
 test('ashkenazi: kamatz → cholam and tav without dagesh → samekh', () => {
   assert.equal(respellAshkenazi('וּמִבֵּית אָבִיךָ'), 'וּמִבֵּיס אֹבִיךֹ')
   assert.equal(respellAshkenazi('וּמִמּוֹלַדְתְּךָ'), 'וּמִמּוֹלַדְתְּךֹ') // tav with dagesh stays
   assert.equal(respellAshkenazi('טׇהֳרָתוֹ'), 'טֹהֳרֹסוֹ')                // marked kamatz katan too
+  assert.equal(respellAshkenazi('אַרְאֶךָּ'), 'אַרְאֶקֹ')                  // final kaf with dagesh → ק
 })
 
 test('ashkenazi: ָיו suffix becomes ֹב so it reads "ov", not "oyv" or "o"', () => {
@@ -40,6 +42,7 @@ test('careful: kamatz katan → cholam, sheva na → chataf segol, the rest unto
   assert.equal(respellCareful('וּמִמּוֹלַדְתְּךָ'), 'וּמִמּוֹלַדְתֱּךָ')  // after a silent sheva
   assert.equal(respellCareful('אַרְצָה'), 'אַרְצָה')                   // sheva nach stays
   assert.equal(respellCareful('אָבִיךָ'), 'אָבִיךָ')                   // kamatz gadol stays
+  assert.equal(respellCareful('אַרְאֶךָּ'), 'אַרְאֶקָ')                   // final kaf with dagesh → ק
 })
 
 const realFetch = globalThis.fetch
@@ -75,6 +78,26 @@ test('romanize: doubled pashta, silluq, patach genuvah, sheva under dagesh chaza
   assert.equal(romanize('ר֣וּחַ'), 'RU-akh.')                    // "a" before the ח
   assert.equal(romanize('הַשְּׁבִיעִ֖י'), 'Ha-she-vi-I.')         // not "hash-vi-i"
   assert.equal(romanize('אַחֶ֖יךָ'), 'A-KHE-kha.')               // silent yud
+})
+
+test('ipa: American vowels, trope stress, a word split where a vowel follows a vowel', () => {
+  const verse = 'וַיֹּ֤אמֶר הַשֵּׁם֙ אֶל־אַבְרָ֔ם לֶךְ־לְךָ֛ מֵאַרְצְךָ֥ וּמִמּֽוֹלַדְתְּךָ֖ וּמִבֵּ֣ית אָבִ֑יךָ אֶל־הָאָ֖רֶץ אֲשֶׁ֥ר אַרְאֶֽךָּ׃'
+  assert.equal(ipa(verse, { tradition: 'ashkenazic', kamatz: 'uh' }),
+    '/vɑ.ˈjoʊ.mɛɹ hɑ.ˈʃɛm ɛl ɑv.ˈɹʌm/, /lɛx lə.ˈxʌ/ /meɪ/ /ɑɹ.tsə.ˈxʌ/ /u.mi.moʊ.lɑd.tə.ˈxʌ u.mi.ˈbeɪs ʌ.ˈvi.xʌ/, /ɛl hʌ/ /ˈʌ.ɹɛts/ /ɑ.ˈʃɛɹ ɑɹ.ˈɛ.kʌ/.')
+  assert.equal(ipa('אֶל־אַבְרָ֔ם', { tradition: 'ashkenazic', kamatz: 'aw' }), '/ɛl ɑv.ˈɹɔm/.')
+  assert.equal(ipa('אֶל־אַבְרָ֔ם'), '/ɛl ɑv.ˈɹɑm/.')                        // Sephardic kamatz
+  assert.equal(romanize('אַבְרָ֔ם', { tradition: 'ashkenazic', kamatz: 'uh' }), 'Av-RUHM.')
+})
+
+test('listen: only known verses and traditions, before any upstream call', async () => {
+  process.env.ELEVENLABS_API_KEY = 'test-elevenlabs-key'
+  process.env.BLOB_READ_WRITE_TOKEN ??= 'test-blob-token'
+  for (const query of ['pasuk=nope&tradition=ashkenazic', 'pasuk=gen-12-1&tradition=klingon', 'tradition=sephardic']) {
+    const res = await listen.fetch(new Request(`http://localhost/api/listen?${query}`))
+    assert.equal(res.status, 400)
+  }
+  assert.equal((await listen.fetch(new Request('http://localhost/api/listen', { method: 'POST' }))).status, 405)
+  assert.equal(upstreamCalls.length, 0)
 })
 
 test('tts: sends the respelled text and the variant instructions with the server key', async () => {

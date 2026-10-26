@@ -5,7 +5,7 @@ import { assessWithOpenAI } from './services/openaiAssessment'
 import { assessWithOpenAIRules } from './services/openaiRulesAssessment'
 import { assessManual } from './services/manualAssessment'
 import { speakHebrew } from './services/tts'
-import { listenUrl, playRecording } from './services/listen'
+import { listenUrl, elevenLabsUrl, playRecording } from './services/listen'
 import { isSpeechAvailable } from './services/azureAuth'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import { splitVerseWords } from './utils/hebrewRules'
@@ -755,19 +755,25 @@ export default function App() {
   }
 
   // Listen: the recorded reading of this verse in the chosen tradition
+  // (testers hear ElevenLabs, falling back to the recording if it fails)
   const verseRecording = listenUrl(pasuk.id, tradition)
+  const verseReading = tester ? elevenLabsUrl(pasuk.id, tradition) : null
 
   function handleListen() {
-    if (listenPhase === 'playing') {
+    if (listenPhase !== 'idle') {
       cancelTtsRef.current?.()
       setListenPhase('idle')
       return
     }
-    setListenPhase('playing')
-    cancelTtsRef.current = playRecording(verseRecording, {
-      onEnd:   () => setListenPhase('idle'),
-      onError: () => setListenPhase('idle'),
-    })
+    const play = (url, fallback) => {
+      setListenPhase('loading')
+      cancelTtsRef.current = playRecording(url, {
+        onStart: () => setListenPhase('playing'),
+        onEnd:   () => setListenPhase('idle'),
+        onError: () => fallback ? play(fallback) : setListenPhase('idle'),
+      })
+    }
+    play(verseReading ?? verseRecording, verseReading && verseRecording)
   }
 
   const studentSelf = dummyStudents.find(s => s.id === studentSelfId) ?? dummyStudents[0]
@@ -1016,16 +1022,16 @@ export default function App() {
             <div className="pasuk-meta">
               <div className="pasuk-meta-top">
                 <span className="pasuk-ref">{pasuk.reference}</span>
-                {verseRecording && (
+                {(verseReading || verseRecording) && (
                   <button
                     className={`btn-listen ${listenPhase !== 'idle' ? 'btn-listen--active' : ''}`}
                     onClick={handleListen}
                     disabled={phase === 'recording' || phase === 'processing'}
                     title={listenPhase === 'idle' ? `Hear this verse read (${tradition === 'ashkenazic' ? 'Ashkenazic' : 'Sephardic'})` : 'Stop'}
                   >
-                    {listenPhase === 'playing' && <span className="listen-icon">■</span>}
-                    {listenPhase === 'idle'    && <span className="listen-icon">▶</span>}
-                    {listenPhase === 'playing' ? 'Stop' : 'Listen'}
+                    {listenPhase !== 'idle' && <span className="listen-icon">■</span>}
+                    {listenPhase === 'idle' && <span className="listen-icon">▶</span>}
+                    {listenPhase === 'loading' ? 'Loading…' : listenPhase === 'playing' ? 'Stop' : 'Listen'}
                   </button>
                 )}
               </div>

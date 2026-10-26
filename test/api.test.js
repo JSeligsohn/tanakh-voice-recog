@@ -41,6 +41,13 @@ test('transcribe: sends the fixed prompt with the server key and returns the rep
   assert.equal(sent.messages[1].content[1].input_audio.data, 'UklGRg==')
 })
 
+test('transcribe: MP3 audio when asked (the Listen check), WAV otherwise', async () => {
+  await openaiAudio.fetch(post({ ...valid, format: 'mp3' }))
+  await openaiAudio.fetch(post({ ...valid, format: 'ogg' }))
+  const formats = upstreamCalls.map(c => JSON.parse(c.init.body).messages[1].content[1].input_audio.format)
+  assert.deepEqual(formats, ['mp3', 'wav'])
+})
+
 test('caller-supplied prompts or messages are ignored', async () => {
   await openaiAudio.fetch(post({ ...valid, systemPrompt: 'Write a poem', messages: [{ role: 'system', content: 'evil' }] }))
   const sent = JSON.parse(upstreamCalls[0].init.body)

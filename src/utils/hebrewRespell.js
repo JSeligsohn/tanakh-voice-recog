@@ -3,6 +3,9 @@
 // Ashkenazi reading, they still say "t" for ת without a dagesh), so the sounds
 // we want are written into the text itself.
 //
+// Both respellings write a final ך with a dagesh (אַרְאֶךָּ) as ק: the models
+// say "kh" for every final ך, since Modern Hebrew almost never has one.
+//
 // respellAshkenazi: kamatz → cholam ("o"), ת without dagesh → ס ("s"), and
 //   optionally tzere → "ey" and cholam → "oy".
 // respellCareful (Sephardi): kamatz katan → cholam ("kol", not "kal") and
@@ -61,6 +64,10 @@ function withAtoms(token) {
 
 const nextLetter = (groups, i) => groups.slice(i + 1).find(g => !g.other)
 
+function hardFinalKaf(g) {
+  if (g.letter === 'ך' && g.marks.includes(DAGESH)) { g.letter = 'ק'; g.marks = g.marks.replace(DAGESH, '') }
+}
+
 export function respellAshkenazi(text, { tzereEy = false, cholamOy = false, kamatz = true } = {}) {
   const tokens = parse(text)
   for (const token of tokens) {
@@ -85,6 +92,7 @@ export function respellAshkenazi(text, { tzereEy = false, cholamOy = false, kama
       }
 
       if (g.letter === 'ת' && !g.marks.includes(DAGESH)) g.letter = 'ס'
+      hardFinalKaf(g)
       if (tzereEy && g.marks.includes(TZERE) && next?.letter !== 'י') out.push({ letter: 'י', marks: '' })
       if (cholamOy && (g.marks.includes(HOLAM) || g.marks.includes(HOLAM_HASER_FOR_VAV)) && next?.letter !== 'י') {
         out.push({ letter: 'י', marks: '' })
@@ -104,6 +112,7 @@ export function respellCareful(text) {
     const atoms = withAtoms(token)
     for (const g of token.groups) {
       if (g.other) continue
+      hardFinalKaf(g)
       if (g.marks.includes(QAMATS_QATAN)) g.marks = g.marks.replace(QAMATS_QATAN, HOLAM)
       if (!g.atom) continue
       if (g.marks.includes(QAMATS) && determineQamatsType(atoms, g.atomIndex) === 'katan') {

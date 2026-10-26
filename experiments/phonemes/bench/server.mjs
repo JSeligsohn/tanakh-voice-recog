@@ -8,9 +8,8 @@
 import { createServer } from 'node:http'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { psukim } from '../../../src/data/psukim.js'
-import { loadAudio, frameLogProbs, freeDecode, expectedUnits, scoreContrasts } from '../lib.mjs'
-import { groups, items } from './items.mjs'
+import { groups, items, latestRound } from './items.mjs'
+import { textOf, score } from './score.mjs'
 
 const HERE = new URL('.', import.meta.url).pathname
 const DATA = join(HERE, '../data/bench')
@@ -20,27 +19,6 @@ const RATE = 16000
 
 await mkdir(DATA, { recursive: true })
 const results = JSON.parse(await readFile(RESULTS, 'utf8').catch(() => '{}'))
-const textOf = item => item.text ?? psukim.find(p => p.id === item.pasuk).text
-
-// Same word and letter, ignoring maqef and final-letter forms
-const BASE = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' }
-const sameWord = (a, b) => a.replace(/־/g, '') === b.replace(/־/g, '')
-const sameLetter = (a, b) => (BASE[a] ?? a) === (BASE[b] ?? b)
-
-async function score(item, kind, file) {
-  const post = await frameLogProbs(await loadAudio(file))
-  const scores = scoreContrasts(post, expectedUnits(textOf(item), { tradition: item.trad }))
-  const flags = scores.filter(s => s.llr < 0).map(s => ({ word: s.word, letter: s.letter, expected: s.expected, partner: s.partner, llr: +s.llr.toFixed(1) }))
-  const later = groups.find(g => g.id === item.group)?.later
-  const wanted = kind === 'wrong' && !later ? item.flag : []
-  const caught = wanted.filter(w => flags.some(f => sameWord(f.word, w.word) && sameLetter(f.letter, w.letter)))
-  const extra = flags.filter(f => !wanted.some(w => sameWord(f.word, w.word) && sameLetter(f.letter, w.letter)))
-  return {
-    heard: freeDecode(post), flags, later: !!later,
-    missed: wanted.filter(w => !caught.includes(w)), extra,
-    ok: caught.length === wanted.length && extra.length === 0,
-  }
-}
 
 // 16 kHz mono 16-bit WAV from the page, with 0.4 s of silence added at each
 // end (a take that starts on the first sound loses an opening b, k or p)
@@ -64,12 +42,20 @@ createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/') return send(res, 200, await readFile(join(HERE, 'page.html')), 'text/html; charset=utf-8')
     if (req.method === 'GET' && url.pathname === '/state') {
-      return send(res, 200, { groups, items: items.map(i => ({ ...i, text: textOf(i) })), results })
+      return send(res, 200, { groups, latestRound, items: items.map(i => ({ ...i, text: textOf(i) })), results })
     }
     if (req.method === 'GET' && url.pathname === '/audio') {
       const name = url.searchParams.get('file') ?? ''
       if (!/^[\w.-]+\.wav$/.test(name)) return send(res, 400, { error: 'bad file' })
-      return send(res, 200, await readFile(join(DATA, name)), 'audio/wav')
+      const wav = await readFile(join(DATA, name))
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '')
+      if (range) {
+        const start = range[1] ? +range[1] : 0, end = range[2] ? Math.min(+range[2], wav.length - 1) : wav.length - 1
+        res.writeHead(206, { 'Content-Type': 'audio/wav', 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${wav.length}`, 'Accept-Ranges': 'bytes' })
+        return res.end(wav.subarray(start, end + 1))
+      }
+      res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wav.length, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' })
+      return res.end(wav)
     }
     if (req.method === 'POST' && url.pathname === '/take') {
       const item = items.find(i => i.id === url.searchParams.get('id'))

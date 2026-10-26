@@ -1,7 +1,8 @@
 // Phoneme experiment: run the wav2vec2 XLSR-53 espeak phoneme model (ONNX) on
 // a recording, line the verse's expected sounds up with it (CTC forced
 // alignment), and score each shin/sin and dagesh letter against its partner
-// sound (goodness of pronunciation). Everything runs locally.
+// sound, each vowel against the other vowels, and each sheva for being said
+// or left out (goodness of pronunciation). Everything runs locally.
 
 import { readFile, mkdir, access } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -81,8 +82,31 @@ export function freeDecode({ lp, T }) {
 
 const has = t => t in vocab
 const set = (...tokens) => tokens.filter(has)
-const VOWELS = set('a', 'ɑ', 'ɐ', 'aː', 'ä', 'æ', 'e', 'ɛ', 'e̞', 'eː', 'ɛː', 'eɪ', 'ɛɪ', 'ə', 'i', 'iː', 'ɪ', 'ɨ', 'ᵻ',
-  'o', 'ɔ', 'o̞', 'oː', 'ɔː', 'oʊ', 'oɪ', 'ɔɪ', 'u', 'uː', 'ʊ', 'ɵ', 'ʌ', 'ɜ', 'ai', 'aɪ', 'au', 'aʊ', 'ui', 'ei', 'y')
+// The model's vowel tokens (many carry tone marks from other languages),
+// grouped by their first sound. "schwa" is a reduced vowel: accepted for any
+// vowel, never counted as the wrong one.
+const VOWEL_CLASS = { a: [], e: [], i: [], o: [], u: [], schwa: [] }
+const FIRST = [
+  [/^(a|ɑ|ɐ|æ|ä|ʌ)/, 'a'], [/^(e|ɛ)/, 'e'], [/^(i|ɪ|ɨ|ᵻ|y)/, 'i'],
+  [/^(o|ɔ|ɒ)/, 'o'], [/^(u|ʊ|ɯ)/, 'u'], [/^(ə|ɚ|ɜ|ø|œ|ɵ)/, 'schwa'],
+]
+for (const t of Object.keys(vocab)) {
+  // vowels only: no consonant letters (but "ər" and "ɚ" are a reduced vowel)
+  if (/[bcdfghjklmnpqrstvwxzðθʃʒɹɡŋʁχħʔ]/.test(t.replace(/^ər/, ''))) continue
+  const hit = FIRST.find(([re]) => re.test(t))
+  if (hit) VOWEL_CLASS[hit[1]].push(t)
+}
+const FULL = ['a', 'e', 'i', 'o', 'u']
+// Pairs the model can't tell apart (one-frame spikes spread between them), so
+// they aren't scored against each other: "o-MEN" and "a-MEN" both come out ɑ,
+// and o/u blur the same way.
+const NEAR = { a: ['o'], o: ['a', 'u'], u: ['o'] }
+// An optional glide after a vowel: tzere "ei" (the yod after it is silent in
+// the rules), holam "oi"/"ou". Only the lax glide sounds, so a plain "i" for
+// tzere ("ITZ" for עֵץ) can't pass as e + glide.
+const GLIDE = { tzere: ['ɪ', 'j'], holam: ['ɪ', 'ʊ', 'j', 'w'] }
+const VOWELS = Object.values(VOWEL_CLASS).flat()
+const vowelTokens = classes => [...classes, 'schwa'].flatMap(c => VOWEL_CLASS[c])
 // Model tokens that count as each of our sounds
 const CONSONANT = {
   b: set('b', 'bʲ', 'bː'), v: set('v', 'vʲ', 'w', 'β', 'ʋ'),
@@ -96,31 +120,61 @@ const CONSONANT = {
 // The partner each tested sound is scored against
 export const PARTNER = { sh: 's', s: 'sh', b: 'v', v: 'b', k: 'ch', ch: 'k', p: 'f', f: 'p', t: 's' }
 
-// The verse as a sequence of units for alignment. Vowels match any vowel (we
-// don't test them yet); a sheva or silent-able vowel is optional. Units on
-// ש, ב/ו-less bet, כ, פ and ת carry `test` so they get scored.
+// The verse as a sequence of units for alignment. Each vowel unit accepts the
+// vowels the rules engine accepts there (plus a reduced "uh"); a sheva or a
+// vowel that may be silent is optional. Units on ש, ב, כ, פ and ת carry
+// `test`, and every vowel unit `vowelTest`, so they get scored; a consonant
+// followed by a sheva nach carries `nach`, to check that no vowel was added.
 export function expectedUnits(text, settings = {}) {
   const units = []
   splitVerseWords(text).forEach((word, wi) => {
     const atoms = tokenizeWord(word)
     const { segments } = getExpectedPhonetic(atoms, settings)
-    for (const seg of segments) {
+    segments.forEach((seg, k) => {
       const a = seg.atom
       const c = seg.consonant
       const consonantUnit = c && CONSONANT[c] && {
         kind: 'c', sound: c, tokens: [...new Set([...CONSONANT[c], ...(seg.altConsonants ?? []).flatMap(k => CONSONANT[k] ?? [])])],
         word, wi, letter: a.letter, atomIndex: seg.atomIndex,
         test: testedLetter(a, c),
+        nach: seg.shevaType === 'nach' && !a.isFinal,
       }
-      const vowelUnit = seg.vowel && {
-        kind: 'v', sound: seg.vowel, tokens: VOWELS, word, wi, letter: a.letter, atomIndex: seg.atomIndex,
-        optional: a.vowel === 'sheva' || a.vowel?.startsWith('hataf') || (seg.altVowels ?? []).includes(''),
-      }
-      const ordered = seg.patachGenuvah ? [vowelUnit, consonantUnit] : [consonantUnit, vowelUnit]
+      const where = { word, wi, letter: a.letter, atomIndex: seg.atomIndex }
+      const vowelUnit = seg.vowel && vowelUnitFor(seg, where, segments[k + 1]?.consonant, segments[k - 1]?.shevaType === 'nach')
+      const glideTokens = seg.vowel && (GLIDE[a.vowel] ?? (a.yudAfter ? GLIDE.tzere : null))
+      const glide = glideTokens && { kind: 'g', tokens: glideTokens.filter(has), ...where, optional: true }
+      const ordered = seg.patachGenuvah ? [vowelUnit, consonantUnit] : [consonantUnit, vowelUnit, glide]
       units.push(...ordered.filter(Boolean))
-    }
+    })
   })
   return units
+}
+
+// Can a sheva na be left out entirely, so the letters run together ("shma"
+// for שְׁמַע, "breishit", "vha" for וְהַ)? Not when the first letter can't
+// lead a cluster (לְךָ: some vowel is always there, so a missing one means it
+// was said too short), and not after a sheva nach (וּמִמּוֹלַדְתְּךָ): that
+// letter opens its own syllable whatever happens, and a hard t's release is
+// heard like a vowel, so it can be short but not left out.
+const CAN_LEAD = new Set(['b', 'v', 'p', 'f', 'k', 'ch', 'g', 'd', 't', 's', 'sh', 'z', 'ts'])
+const clusters = (c1, c2, afterNach) => !afterNach && CAN_LEAD.has(c1) && !!c2 && c1 !== c2
+
+function vowelUnitFor(seg, where, nextConsonant, afterNach) {
+  const nikkud = seg.atom.vowel
+  const optional = seg.altVowels.includes('') || nikkud.startsWith('hataf')
+  // Sheva na: any vowel counts as saying it; the test is whether it was said,
+  // where it could have been left out
+  if (nikkud === 'sheva') {
+    return {
+      kind: 'v', sound: 'e', tokens: VOWELS, ...where, optional: true,
+      vowelTest: seg.shevaType === 'na' ? 'sheva-na' : null, canCluster: clusters(seg.consonant, nextConsonant, afterNach),
+    }
+  }
+  const accepted = [...new Set([seg.vowel, ...seg.altVowels].filter(v => FULL.includes(v)))]
+  return {
+    kind: 'v', sound: seg.vowel, tokens: vowelTokens(accepted), ...where, optional,
+    vowelTest: nikkud, accepted, rivals: FULL.filter(v => !accepted.includes(v) && !accepted.some(a => NEAR[a]?.includes(v))),
+  }
 }
 
 function testedLetter(atom, sound) {
@@ -135,27 +189,39 @@ function testedLetter(atom, sound) {
 
 // --- Forced alignment ----------------------------------------------------------------
 
-// Log probability that frame t is any of `tokens`
-function classLp(lp, t, tokens) {
-  let max = -Infinity
-  for (const id of tokens) max = Math.max(max, lp[t * V + id])
-  if (max === -Infinity) return -Infinity
-  let sum = 0
-  for (const id of tokens) sum += Math.exp(lp[t * V + id] - max)
-  return max + Math.log(sum)
+// Log probability that each frame is any of `ids`, cached per token set
+function classLps(post, ids) {
+  post.cache ??= new Map()
+  const key = ids.join(',')
+  let out = post.cache.get(key)
+  if (out) return out
+  const { lp, T } = post
+  out = new Float64Array(T)
+  for (let t = 0; t < T; t++) {
+    let max = -Infinity
+    for (const id of ids) max = Math.max(max, lp[t * V + id])
+    if (max === -Infinity) { out[t] = -Infinity; continue }
+    let sum = 0
+    for (const id of ids) sum += Math.exp(lp[t * V + id] - max)
+    out[t] = max + Math.log(sum)
+  }
+  post.cache.set(key, out)
+  return out
 }
 
 // CTC Viterbi over blank, u1, blank, u2, ..., un, blank, where a unit is a set
 // of acceptable tokens and optional units may be skipped. Returns the best
 // path's log probability and each unit's frames [start, end) (null if skipped).
-export function align({ lp, T }, units) {
+export function align(post, units) {
+  const { lp, T } = post
   const n = units.length
   const ids = units.map(u => u.tokens.map(t => vocab[t]))
   const S = 2 * n + 1 // even = blank, odd = unit (s-1)/2
   const emit = new Float32Array(T * S)
+  const cls = ids.map(x => classLps(post, x))
   for (let t = 0; t < T; t++) {
     const b = lp[t * V + BLANK]
-    for (let s = 0; s < S; s++) emit[t * S + s] = s % 2 === 0 ? b : classLp(lp, t, ids[(s - 1) >> 1])
+    for (let s = 0; s < S; s++) emit[t * S + s] = s % 2 === 0 ? b : cls[(s - 1) >> 1][t]
   }
   const disjoint = (i, j) => !ids[i].some(x => ids[j].includes(x))
   // predecessors of each state (besides itself)
@@ -214,16 +280,83 @@ export function align({ lp, T }, units) {
   return { score, spans }
 }
 
-// Score each tested letter: how much better the expected sound explains the
-// audio than its partner. Re-aligns the whole verse with only that one unit
-// swapped, so the comparison is a likelihood ratio over the best timing for
-// each. Negative = the partner fits better, i.e. the reader likely said it.
+// Probability that frame t is some vowel
+const VOWEL_IDS = VOWELS.map(t => vocab[t])
+const vowelMass = ({ lp }, t) => VOWEL_IDS.reduce((sum, id) => sum + Math.exp(lp[t * V + id]), 0)
+
+// A sheva na must be heard (shevas enforced). A short one often gets no spike
+// of its own but leaves a trace of vowel; with no trace at all, the letters
+// ran together. Bench round 1: clearly said 0.67–0.98, short 0.12–0.34, left
+// out ≤ 0.03. The trace decides when the alignment disagrees: in יְדֵי the
+// model hears "ye" as an "i" and gives it to the yod.
+// A sheva that is heard but comes out as a reduced "ə" rather than "e" is
+// short too: all three deliberate "left out" takes the trace missed (l-CHA,
+// mish-p-CHOT, BNEI) were mostly ə, and clearly said ones mostly e.
+const SAID_TRACE = 0.6, SOME_TRACE = 0.1, MUMBLED = 0.35
+function shevaNaVerdict(llr, trace, canCluster, heardAs) {
+  if (llr >= 0 || trace >= SAID_TRACE) return heardAs?.class === 'schwa' && heardAs.schwa >= MUMBLED ? 'short' : 'said'
+  return trace >= SOME_TRACE || !canCluster ? 'short' : 'left out'
+}
+
+// Which vowel class has the most probability over a span: { class, share }
+function vowelQuality(post, span) {
+  if (!span) return null
+  const mass = {}
+  for (const [c, toks] of Object.entries(VOWEL_CLASS)) {
+    mass[c] = 0
+    for (let t = span[0]; t < span[1]; t++) for (const tok of toks) mass[c] += Math.exp(post.lp[t * V + vocab[tok]])
+  }
+  const total = Object.values(mass).reduce((a, b) => a + b, 0) || 1
+  const [c, m] = Object.entries(mass).sort((a, b) => b[1] - a[1])[0]
+  return { class: c, share: +(m / total).toFixed(2), schwa: +(mass.schwa / total).toFixed(2), e: +(mass.e / total).toFixed(2) }
+}
+
+// How far below zero a score must fall to be flagged. Vowels and shevas are
+// noisier than consonants (rounds 1–2: correct vowels reached −2.0, the
+// vowel mistakes it can hear scored −2.3 to −4.9).
+export const FLAG_BELOW = { consonant: 0, vowel: -2.2, 'sheva-nach': -2.5 }
+export const isFlagged = s => s.kind === 'sheva-na' ? s.partner !== 'said' : s.llr < FLAG_BELOW[s.kind]
+
+// Score each tested sound against what a reader might say instead. Each test
+// re-aligns the whole verse with one unit changed, so the comparison is a
+// likelihood ratio over the best timing for each. Negative = the alternative
+// fits better, i.e. the reader likely said it.
+//   consonant   the written sound vs its partner (sh/s, b/v, k/kh, p/f, t/s)
+//   vowel       the accepted vowels vs all the others together
+//   sheva-na    said vs left out, then said / short / left out (shevaNaVerdict)
+//   sheva-nach  silent vs a vowel added after the letter
 export function scoreContrasts(post, units, base = align(post, units)) {
-  return units.map((u, i) => {
-    if (!u.test) return null
-    const partner = u.test === 'sav' ? 't' : PARTNER[u.sound]
-    const swapped = units.map((x, j) => j === i ? { ...x, tokens: CONSONANT[partner] } : x)
-    const alt = align(post, swapped)
-    return { i, letter: u.letter, word: u.word, test: u.test, expected: u.sound, partner, llr: base.score - alt.score, span: base.spans[i] }
-  }).filter(Boolean)
+  const swap = (i, change) => align(post, units.map((x, j) => j === i ? { ...x, ...change } : x))
+  const out = []
+  units.forEach((u, i) => {
+    const at = { i, letter: u.letter, word: u.word, span: base.spans[i] }
+    if (u.test) {
+      const partner = u.test === 'sav' ? 't' : PARTNER[u.sound]
+      out.push({ ...at, kind: 'consonant', test: u.test, expected: u.sound, partner, llr: base.score - swap(i, { tokens: CONSONANT[partner] }).score })
+    }
+    if (u.vowelTest === 'sheva-na') {
+      const saidAlign = swap(i, { optional: false }), said = saidAlign.score
+      const heardAs = vowelQuality(post, saidAlign.spans[i])
+      const without = align(post, units.filter((_, j) => j !== i))
+      // with the sheva left out, how much vowel the model still hears from the
+      // letter before it to the letter after (a short sheva often has no spike
+      // of its own, but leaves a trace)
+      const from = without.spans[i - 1]?.[0] ?? 0, to = without.spans[i]?.[1] ?? post.T
+      let trace = 0
+      for (let t = from; t < to; t++) trace = Math.max(trace, vowelMass(post, t))
+      const llr = said - without.score
+      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(llr, trace, u.canCluster, heardAs), llr, trace, heardAs })
+    } else if (u.vowelTest && u.rivals.length) {
+      const alt = swap(i, { tokens: u.rivals.flatMap(v => VOWEL_CLASS[v]) })
+      const llr = base.score - alt.score
+      // name the vowel that fits best, for the message
+      const partner = llr < 0 ? u.rivals.map(v => [v, swap(i, { tokens: VOWEL_CLASS[v] }).score]).sort((a, b) => b[1] - a[1])[0][0] : u.rivals.join('/')
+      out.push({ ...at, kind: 'vowel', test: u.vowelTest, expected: u.accepted.join('/'), partner, llr })
+    }
+    if (u.nach) {
+      const added = align(post, [...units.slice(0, i + 1), { kind: 'v', tokens: VOWELS, word: u.word }, ...units.slice(i + 1)]).score
+      out.push({ ...at, kind: 'sheva-nach', test: 'sheva-nach', expected: 'silent', partner: 'a vowel', llr: base.score - added })
+    }
+  })
+  return out
 }

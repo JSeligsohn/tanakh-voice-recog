@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grader comparison</title>
+<style>
+  :root { --bg: #fafaf8; --card: #fff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e4e2dc; --ok: #1f7a4d; --okbg: #e6f4ec; --bad: #b3261e; --badbg: #fbeaea; --warn: #8a5a00; --warnbg: #fdf3dc; --accent: #2a5bd7; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161615; --card: #1f1f1d; --ink: #ecebe7; --muted: #a09f99; --line: #34332f; --ok: #6fd3a0; --okbg: #17382a; --bad: #ff8a80; --badbg: #3d1d1b; --warn: #f2c46d; --warnbg: #3a2e14; --accent: #8fb0ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 16px; }
+  header h1 { margin: 0 0 4px; font-size: 18px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+  input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
+  input[type=url] { width: 280px; max-width: 100%; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status, #summary { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  main { max-width: 980px; margin: 0 auto; padding: 8px 16px 64px; }
+  .attempt { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 12px 0; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .heb { font-family: "SBL Hebrew", "Taamey Frank CLM", "Times New Roman", serif; font-size: 22px; direction: rtl; line-height: 1.6; }
+  audio { width: 100%; margin: 6px 0; }
+  .heard { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+  th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  td { vertical-align: top; padding: 6px; border-bottom: 1px dashed var(--line); }
+  td.word { font-family: "SBL Hebrew", "Times New Roman", serif; font-size: 20px; direction: rtl; white-space: nowrap; }
+  .okc { color: var(--ok); } .flag { color: var(--bad); }
+  tr.disagree td.word { background: var(--warnbg); }
+  .verdicts { display: flex; flex-wrap: wrap; gap: 4px; }
+  .verdicts button { font-size: 12px; padding: 2px 7px; }
+  .empty { color: var(--muted); padding: 24px 0; }
+  @media (max-width: 640px) { table, tbody, tr, td { display: block; } thead { display: none; } td { border: 0; padding: 3px 0; } tr { border-bottom: 1px dashed var(--line); padding: 6px 0; } td.word { white-space: normal; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Grader comparison</h1>
+  <div class="controls">
+    <label>App <input id="app" type="url" placeholder="https://…vercel.app"></label>
+    <label>Review password <input id="key" type="password" autocomplete="off"></label>
+    <button id="fetch">Fetch new attempts</button>
+    <button id="rescore" title="Run both graders again on every saved attempt">Re-score all</button>
+    <label><input id="onlyDiff" type="checkbox" checked> Only words they disagree on</label>
+  </div>
+  <div id="status"></div>
+  <div id="summary"></div>
+</header>
+<main id="list"></main>
+<script type="module">
+import { esc, flagText } from '/flags.js'
+
+const DEFAULT_APP = 'https://tanakh-reading-demo.vercel.app'
+const app = document.getElementById('app'), key = document.getElementById('key'), onlyDiff = document.getElementById('onlyDiff')
+try { app.value = localStorage.getItem('compare-app') || DEFAULT_APP } catch { app.value = DEFAULT_APP }
+let state = { attempts: [], verdicts: {}, progress: {} }
+
+const VERDICTS = [['current', 'Current grader right'], ['phoneme', 'Phoneme scorer right'], ['both', 'Both right'], ['neither', 'Neither']]
+const currentFlagged = w => w.current.errorType !== 'None' || w.current.notes.length > 0
+const phonemeFlagged = w => w.phoneme.length > 0
+const currentText = w => {
+  if (w.current.errorType === 'Omission') return '<span class="flag">not heard (skipped)</span>'
+  if (!currentFlagged(w)) return `<span class="okc">✓</span> <span class="heard">${esc(w.current.heard)}</span>`
+  const notes = w.current.notes.length ? w.current.notes.map(esc).join('<br>') : esc(w.current.errorType)
+  return `<span class="flag">${notes}</span><div class="heard">heard: ${esc(w.current.heard)}</div>`
+}
+const phonemeText = w => phonemeFlagged(w) ? `<span class="flag">${w.phoneme.map(flagText).join('<br>')}</span>` : '<span class="okc">✓</span>'
+
+function render() {
+  const list = document.getElementById('list')
+  const done = state.attempts.filter(a => !a.error)
+  let words = 0, disagree = 0
+  const tally = { current: 0, phoneme: 0, both: 0, neither: 0 }
+  for (const v of Object.values(state.verdicts)) tally[v.verdict] = (tally[v.verdict] ?? 0) + 1
+  list.innerHTML = done.length ? done.map(a => {
+    const rows = a.words.map((w, wi) => ({ w, wi, c: currentFlagged(w), p: phonemeFlagged(w) }))
+      .filter(r => r.c || r.p)
+    words += a.words.length
+    disagree += rows.filter(r => r.c !== r.p).length
+    const shown = onlyDiff.checked ? rows.filter(r => r.c !== r.p) : rows
+    return `<div class="attempt">
+      <div class="meta">${esc(a.tester ?? '?')} · ${esc(new Date(a.createdAt).toLocaleString())} · ${esc(a.settings?.tradition ?? '')}</div>
+      <div class="heb">${esc(a.referenceText)}</div>
+      <audio controls preload="none" src="/compare/audio?id=${encodeURIComponent(a.id)}"></audio>
+      <div class="heard">gpt-audio heard: ${esc(a.transcription)}</div>
+      ${shown.length ? `<table><thead><tr><th>Word</th><th>Current grader (gpt-audio)</th><th>Phoneme scorer</th><th>Who's right?</th></tr></thead><tbody>
+        ${shown.map(({ w, wi, c, p }) => {
+          const v = state.verdicts[`${a.id}#${wi}`]?.verdict
+          return `<tr class="${c !== p ? 'disagree' : ''}"><td class="word">${esc(w.word)}</td><td>${currentText(w)}</td><td>${phonemeText(w)}</td>
+            <td><div class="verdicts">${VERDICTS.map(([id, label]) => `<button data-id="${esc(a.id)}" data-wi="${wi}" data-v="${id}" class="${v === id ? 'on' : ''}">${label}</button>`).join('')}</div></td></tr>`
+        }).join('')}</tbody></table>`
+        : `<div class="meta" style="margin-top:6px">${rows.length ? 'They agree on every flagged word.' : 'Neither flagged anything.'}</div>`}
+    </div>`
+  }).join('') : '<p class="empty">No attempts yet. Enter the review password and click "Fetch new attempts".</p>'
+  const failed = state.attempts.length - done.length
+  document.getElementById('summary').textContent = done.length
+    ? `${done.length} attempts, ${words} words · they disagree on ${disagree} · your verdicts: current right ${tally.current}, phoneme right ${tally.phoneme}, both right ${tally.both}, neither ${tally.neither}${failed ? ` · ${failed} couldn't be scored` : ''}`
+    : ''
+}
+
+function showProgress(p) {
+  document.getElementById('status').textContent = p.error ? `Error: ${p.error}`
+    : p.running ? `Scoring ${p.done} of ${p.total || '…'} attempts (a few seconds each)…` : ''
+  document.getElementById('fetch').disabled = document.getElementById('rescore').disabled = !!p.running
+}
+
+async function load() {
+  state = await fetch('/compare/state').then(r => r.json())
+  showProgress(state.progress)
+  render()
+  if (state.progress.running) setTimeout(load, 2000)
+}
+
+async function start(rescore) {
+  try { localStorage.setItem('compare-app', app.value) } catch {}
+  if (!rescore && !key.value) { document.getElementById('status').textContent = 'Enter the review password first.'; return }
+  const res = await fetch('/compare/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-review-key': rescore ? '' : key.value }, body: JSON.stringify({ appUrl: app.value, rescore }) })
+  if (!res.ok) { document.getElementById('status').textContent = (await res.json()).error; return }
+  setTimeout(load, 500)
+}
+
+document.getElementById('fetch').addEventListener('click', () => start(false))
+document.getElementById('rescore').addEventListener('click', () => start(true))
+onlyDiff.addEventListener('change', render)
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-v]')
+  if (!b) return
+  const key = `${b.dataset.id}#${b.dataset.wi}`
+  const verdict = state.verdicts[key]?.verdict === b.dataset.v ? null : b.dataset.v
+  await fetch('/compare/verdict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: b.dataset.id, wi: +b.dataset.wi, verdict }) })
+  if (verdict) state.verdicts[key] = { verdict }; else delete state.verdicts[key]
+  render()
+})
+load()
+</script>
+</body>
+</html>

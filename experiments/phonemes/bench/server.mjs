@@ -10,6 +10,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { groups, items, latestRound } from './items.mjs'
 import { textOf, score } from './score.mjs'
+import { compared, verdicts, progress, sync, saveVerdict, attemptFile } from './compare.mjs'
 
 const HERE = new URL('.', import.meta.url).pathname
 const DATA = join(HERE, '../data/bench')
@@ -32,6 +33,20 @@ function padWav(buf) {
   return Buffer.concat([header, pcm])
 }
 
+const bodyOf = async req => { const chunks = []; for await (const c of req) chunks.push(c); return Buffer.concat(chunks).toString() }
+
+// A WAV, answering range requests (Safari needs them to play audio)
+function sendWav(req, res, wav) {
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '')
+  if (range) {
+    const start = range[1] ? +range[1] : 0, end = range[2] ? Math.min(+range[2], wav.length - 1) : wav.length - 1
+    res.writeHead(206, { 'Content-Type': 'audio/wav', 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${wav.length}`, 'Accept-Ranges': 'bytes' })
+    return res.end(wav.subarray(start, end + 1))
+  }
+  res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wav.length, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' })
+  return res.end(wav)
+}
+
 const send = (res, status, body, type = 'application/json') => {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' })
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body))
@@ -41,8 +56,32 @@ createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
   try {
     if (req.method === 'GET' && url.pathname === '/') return send(res, 200, await readFile(join(HERE, 'page.html')), 'text/html; charset=utf-8')
+    if (req.method === 'GET' && url.pathname === '/flags.js') return send(res, 200, await readFile(join(HERE, 'flags.js')), 'text/javascript; charset=utf-8')
     if (req.method === 'GET' && url.pathname === '/state') {
       return send(res, 200, { groups, latestRound, items: items.map(i => ({ ...i, text: textOf(i) })), results })
+    }
+    // Compare: the current grader and the phoneme scorer on testers' attempts
+    if (req.method === 'GET' && url.pathname === '/compare') return send(res, 200, await readFile(join(HERE, 'compare.html')), 'text/html; charset=utf-8')
+    if (req.method === 'GET' && url.pathname === '/compare/state') {
+      return send(res, 200, { attempts: Object.values(compared).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')), verdicts, progress })
+    }
+    if (req.method === 'POST' && url.pathname === '/compare/sync') {
+      // the review password is only passed on to the app's Review API
+      const { appUrl, rescore } = JSON.parse((await bodyOf(req)) || '{}')
+      if (appUrl && !/^https:\/\/[\w.-]+(:\d+)?\/?$/.test(appUrl)) return send(res, 400, { error: 'App address should look like https://example.vercel.app' })
+      sync(appUrl, req.headers['x-review-key'] ?? '', { rescore: !!rescore })
+      return send(res, 200, { started: true })
+    }
+    if (req.method === 'POST' && url.pathname === '/compare/verdict') {
+      const { id, wi, verdict } = JSON.parse(await bodyOf(req))
+      if (!compared[id] || !Number.isInteger(wi) || !['current', 'phoneme', 'both', 'neither', null].includes(verdict)) return send(res, 400, { error: 'bad verdict' })
+      await saveVerdict(id, wi, verdict)
+      return send(res, 200, { ok: true })
+    }
+    if (req.method === 'GET' && url.pathname === '/compare/audio') {
+      const file = attemptFile(url.searchParams.get('id') ?? '')
+      if (!file) return send(res, 400, { error: 'bad id' })
+      return sendWav(req, res, await readFile(file))
     }
     // A plain page with a player per take: /listen?keys=<result key>,<result key>
     if (req.method === 'GET' && url.pathname === '/listen') {
@@ -62,15 +101,7 @@ body{margin:0;padding:16px;background:var(--bg);color:var(--ink);font:15px/1.45 
     if (req.method === 'GET' && url.pathname === '/audio') {
       const name = url.searchParams.get('file') ?? ''
       if (!/^[\w.-]+\.wav$/.test(name)) return send(res, 400, { error: 'bad file' })
-      const wav = await readFile(join(DATA, name))
-      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '')
-      if (range) {
-        const start = range[1] ? +range[1] : 0, end = range[2] ? Math.min(+range[2], wav.length - 1) : wav.length - 1
-        res.writeHead(206, { 'Content-Type': 'audio/wav', 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${wav.length}`, 'Accept-Ranges': 'bytes' })
-        return res.end(wav.subarray(start, end + 1))
-      }
-      res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wav.length, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' })
-      return res.end(wav)
+      return sendWav(req, res, await readFile(join(DATA, name)))
     }
     if (req.method === 'POST' && url.pathname === '/take') {
       const item = items.find(i => i.id === url.searchParams.get('id'))

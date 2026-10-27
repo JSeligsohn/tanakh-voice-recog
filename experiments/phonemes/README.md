@@ -69,6 +69,34 @@ saved take with the current `lib.mjs`. Round 3 is recorded per reader
 really read (pauses, "um", repeats, a restart, fast, quiet, far away, noise,
 a skipped word, a wrong word).
 
+## Compare: the two graders on testers' attempts
+
+With the bench running, open http://127.0.0.1:8790/compare. Enter the app's
+address and the review password, and click "Fetch new attempts": new tester
+attempts are downloaded through the app's Review API into `data/attempts/`
+(the password is passed on to the app, never saved), and each is graded
+twice: by the production grader (the saved gpt-audio transcription through
+the rules engine) and by the phoneme scorer (the recording). The page shows,
+word by word, where they disagree, with the recording; the verdicts you click
+("Current grader right", "Phoneme scorer right", ...) are saved to
+`data/compare-verdicts.json`. "Re-score all" grades every saved attempt again,
+after a scorer change, without downloading anything.
+
+### First comparison, 2026-10-27 (9 tester attempts, 21 disagreeing words)
+
+The user's verdicts: phoneme scorer right 12, current grader right 6, both 2,
+neither 1. The current grader's 6 showed two gaps, now fixed:
+- **A dropped final ־ךָ** ("lekh" for לְךָ, "avikh" for אָבִיךָ, an Ashkenazic
+  take): new `vowel-missing` check for that ending only (−4.5; 2 of 33
+  correctly said endings on the bench score below).
+- **לֶךְ־ heard "lach"** 3 times: a segol right before "ch" accepts "a" (the
+  sound pulls it; "al" for אֶל־ is still caught). The wrong-word check
+  compares each word's usual sounds, so this doesn't hide "gadol" for אֶחָד.
+
+After the fixes the phoneme scorer matches 19 of the 20 verdicts (it was 14);
+the one left is a borderline "v" in one take of וּמִבֵּית. The fixes were made
+on these same attempts, so new attempts are the real test.
+
 ## Results, 2026-10-26
 
 - **Pairs:** 30 of 30 sorted correctly (15 words × right and wrong).

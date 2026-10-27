@@ -137,8 +137,10 @@ function mergeVowelCarriers(atoms) {
       continue // silent yud, part of chirik malei
     }
 
-    // Tzere malei: י with no vowel after a letter with tzere
+    // Tzere malei: י with no vowel after a letter with tzere. Marked, as the
+    // yud invites "ei" (אֱלֹהֵינוּ "Elokeinu")
     if (a.letter === 'י' && !a.vowel && !a.dagesh && prev?.vowel === 'tzere') {
+      prev.yudAfter = true
       continue
     }
 

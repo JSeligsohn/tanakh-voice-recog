@@ -36,6 +36,8 @@
   .heard button { padding: 0 6px; font-size: 12px; margin-left: 6px; }
   .rounds { margin: 12px 0 0; display: flex; gap: 8px; }
   .rounds button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .readers { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .rounds { flex-wrap: wrap; }
   @media (max-width: 560px) { .take { grid-template-columns: 1fr auto; } .kind { grid-column: 1 / 3; } .result { grid-column: 1 / 3; } }
 </style>
 </head>
@@ -57,17 +59,28 @@ const tradLabel = t => (t === 'ashkenazic' ? 'Ashkenazic' : 'Sephardic')
 const NIKKUD = { patah: 'patach', qamats: 'kamatz', tzere: 'tzere', segol: 'segol', hiriq: 'chirik', holam: 'cholam', shuruk: 'shuruk', qubuts: 'kubutz', 'hataf-patah': 'chataf patach', 'hataf-segol': 'chataf segol', 'hataf-qamats': 'chataf kamatz', 'sheva-na': 'sheva na', 'sheva-nach': 'sheva nach' }
 const inWord = w => `<span dir="rtl">${esc(w)}</span>`
 // what a flag on the bench item is about: "ש in X" or "the chirik in X"
-const target = w => w.vowel ? `the ${NIKKUD[w.vowel] ?? w.vowel} in ${inWord(w.word)}` : `${esc(w.letter)} in ${inWord(w.word)}`
+const target = w => w.problem ? `${inWord(w.word)} (${esc(w.problem)})` : w.vowel ? `the ${NIKKUD[w.vowel] ?? w.vowel} in ${inWord(w.word)}` : `${esc(w.letter)} in ${inWord(w.word)}`
+// vowel and letter sounds, said the way the app says them
+const SOUND = { a: '"ah" (father)', e: '"eh" (bed)', i: '"ee" (see)', o: '"oh" (bone)', u: '"oo" (moon)', 'a/o/u': '"ah", "oh" or "oo"',
+  sh: '"sh"', s: '"s"', b: '"b"', v: '"v"', k: '"k"', ch: '"ch" (Bach)', p: '"p"', f: '"f"', t: '"t"' }
+const sound = x => SOUND[x] ?? `"${x}"`
+const expectedVowel = f => f.test === 'tzere' ? '"eh" or "ei" (bed, they)' : sound(f.expected)
 // what was flagged in a take
 const flagText = f => {
-  if (f.kind === 'vowel') return `the ${NIKKUD[f.test] ?? f.test} in ${inWord(f.word)} (heard ${f.partner}, not ${f.expected})`
+  if (f.kind === 'word') return `${inWord(f.word)} was left out`
+  if (f.kind === 'vowel' || f.kind === 'vowel-ou') return `the ${NIKKUD[f.test] ?? f.test} in ${inWord(f.word)}: heard ${sound(f.partner)}, should be ${expectedVowel(f)}`
   if (f.kind === 'sheva-na') return f.partner === 'short'
     ? `the sheva na in ${inWord(f.word)} was only slightly heard (say it more clearly)`
     : `the sheva na in ${inWord(f.word)} was left out (the letters ran together)`
   if (f.kind === 'sheva-nach') return `a vowel added after ${esc(f.letter)} in ${inWord(f.word)}`
-  return `${esc(f.letter)} in ${inWord(f.word)} (heard ${f.partner}, not ${f.expected})`
+  return `${esc(f.letter)} in ${inWord(f.word)}: heard ${sound(f.partner)}, should be ${sound(f.expected)}`
 }
 let round = null
+// Round 3 on keeps a take per reader, so an adult and a child can both record
+let reader = 'adult'
+try { reader = localStorage.getItem('bench-reader') || 'adult' } catch {}
+const keyOf = (item, kind) => item.round >= 3 ? `${item.id}__${kind}__${reader}` : `${item.id}__${kind}`
+const kindsOf = item => ['right', 'wrong'].filter(k => item[k])
 
 function resultHtml(item, kind, r) {
   if (!r) return ''
@@ -79,7 +92,8 @@ function resultHtml(item, kind, r) {
   }
   const missed = r.missed ?? []
   const parts = []
-  const wanted = item.flag.filter(w => !missed.some(m => m.word === w.word && m.letter === w.letter && m.vowel === w.vowel))
+  if (!item.flag.length) return `<div class="result ${r.ok ? 'ok' : 'bad'}">${r.ok ? '✓ No flags, as expected.' : `✗ Flagged: ${r.flags.map(flagText).join('; ')}.`}${heard}</div>`
+  const wanted = item.flag.filter(w => !missed.some(m => m.word === w.word && m.letter === w.letter && m.vowel === w.vowel && m.problem === w.problem))
   if (wanted.length) parts.push(`caught ${wanted.map(target).join(', ')}`)
   if (missed.length) parts.push(`missed ${missed.map(target).join(', ')}`)
   if (r.extra?.length) parts.push(`also flagged ${r.extra.map(flagText).join('; ')}`)
@@ -91,19 +105,20 @@ const shown = () => state.items.filter(i => i.round === round)
 function render() {
   const list = document.getElementById('list')
   const rounds = [...new Set(state.items.map(i => i.round))]
-  const tabs = `<p class="rounds">${rounds.map(n => `<button data-round="${n}" class="${n === round ? 'on' : ''}">Round ${n}${n === state.latestRound ? ' (current)' : ''}</button>`).join(' ')}</p>`
+  const readers = round >= 3 ? `<span class="readers">Reader: ${['adult', 'child'].map(r => `<button data-reader="${r}" class="${r === reader ? 'on' : ''}">${r === 'adult' ? 'Adult' : 'Child'}</button>`).join(' ')}</span>` : ''
+  const tabs = `<p class="rounds">${rounds.map(n => `<button data-round="${n}" class="${n === round ? 'on' : ''}">Round ${n}${n === state.latestRound ? ' (current)' : ''}</button>`).join(' ')}${readers}</p>`
   list.innerHTML = tabs + state.groups.map(g => {
     const its = shown().filter(i => i.group === g.id)
     if (!its.length) return ''
     return `<h2>${esc(g.title)}</h2>${g.note ? `<p class="gnote">${esc(g.note)}</p>` : ''}` + its.map(i => `
       <div class="item ${i.pasuk || i.group === 'verse' ? 'verse' : ''}">
         <div class="top"><div class="heb">${esc(i.text)}</div><span class="trad">${tradLabel(i.trad)}</span></div>
-        ${['right', 'wrong'].map(kind => `
+        ${kindsOf(i).map(kind => `
           <div class="take">
-            <span class="kind">${kind === 'right' ? 'As written' : 'Mistake'}</span>
+            <span class="kind">${kind === 'right' ? 'As written' : i.flag.length ? 'Mistake' : 'Variation'}</span>
             <span class="say">${caps(i[kind])}</span>
-            <button class="rec" data-id="${i.id}" data-kind="${kind}">${state.results[`${i.id}__${kind}`] ? 'Redo' : '● Record'}</button>
-            ${resultHtml(i, kind, state.results[`${i.id}__${kind}`])}
+            <button class="rec" data-id="${i.id}" data-kind="${kind}">${state.results[keyOf(i, kind)] ? 'Redo' : '● Record'}</button>
+            ${resultHtml(i, kind, state.results[keyOf(i, kind)])}
           </div>`).join('')}
       </div>`).join('')
   }).join('')
@@ -111,12 +126,12 @@ function render() {
 }
 
 function summarize() {
-  const ids = new Set(shown().map(i => i.id))
-  const scored = Object.entries(state.results).filter(([k]) => ids.has(k.split('__')[0]))
-  const right = scored.filter(([k]) => k.endsWith('__right')), wrong = scored.filter(([k]) => k.endsWith('__wrong'))
-  const n = (rs) => rs.filter(([, r]) => r.ok).length
+  const takes = shown().flatMap(i => kindsOf(i).map(kind => ({ i, kind, r: state.results[keyOf(i, kind)] })))
+  const done = takes.filter(t => t.r)
+  const wrong = done.filter(t => t.kind === 'wrong' && t.i.flag.length), right = done.filter(t => !(t.kind === 'wrong' && t.i.flag.length))
+  const n = ts => ts.filter(t => t.r.ok).length
   document.getElementById('summary').innerHTML =
-    `Round ${round}: ${scored.length} of ${ids.size * 2} recorded · mistakes caught: <b>${n(wrong)}/${wrong.length}</b> · correct readings with no false flag: <b>${n(right)}/${right.length}</b>`
+    `Round ${round}${round >= 3 ? ` (${reader})` : ''}: ${done.length} of ${takes.length} recorded · mistakes caught: <b>${n(wrong)}/${wrong.length}</b> · readings with no false flag: <b>${n(right)}/${right.length}</b>`
 }
 
 async function toWav(blob) {
@@ -144,9 +159,10 @@ async function start(btn) {
     const { id, kind } = btn.dataset
     try {
       const wav = await toWav(new Blob(chunks, { type: recorder.mimeType }))
-      const r = await fetch(`/take?id=${id}&kind=${kind}`, { method: 'POST', body: wav }).then(r => r.json())
+      const item = state.items.find(i => i.id === id)
+      const r = await fetch(`/take?id=${id}&kind=${kind}${item.round >= 3 ? `&reader=${reader}` : ''}`, { method: 'POST', body: wav }).then(r => r.json())
       if (r.error) throw new Error(r.error)
-      state.results[`${id}__${kind}`] = r
+      state.results[keyOf(item, kind)] = r
     } catch (e) { alert('Could not score this take: ' + e.message) }
     recorder = null; active = null
     render()
@@ -180,6 +196,8 @@ document.addEventListener('click', e => {
   if (play) { playTake(play); return }
   const tab = e.target.closest('[data-round]')
   if (tab) { round = +tab.dataset.round; render(); return }
+  const who = e.target.closest('[data-reader]')
+  if (who) { reader = who.dataset.reader; try { localStorage.setItem('bench-reader', reader) } catch {} render(); return }
   const btn = e.target.closest('button.rec')
   if (!btn) return
   if (active === btn && recorder) recorder.stop()

@@ -3,7 +3,7 @@
 // flag on a sound that was read correctly. --save also rewrites
 // data/bench/results.json, so the page shows the current scoring.
 //
-//   node rescore-bench.mjs [kind] [--save] [--round=N]   kind: consonant, vowel, sheva-na, sheva-nach
+//   node rescore-bench.mjs [kind] [--save] [--round=N]   kind: consonant, vowel, vowel-ou, sheva-na, sheva-nach
 import { readFile, writeFile } from 'node:fs/promises'
 import { loadAudio, frameLogProbs, expectedUnits, scoreContrasts, FLAG_BELOW } from './lib.mjs'
 import { items, matchesFlag } from './bench/items.mjs'
@@ -29,10 +29,10 @@ for (const [key, r] of Object.entries(results)) {
 }
 const show = x => `${String(x.llr).padStart(6)}  ${x.key.padEnd(24)} ${x.word} ${x.kind} ${x.test} ${x.expected}→${x.partner}${x.trace != null ? ` (trace ${x.trace.toFixed(2)})` : ''}`
 const targets = rows.filter(x => x.target), others = rows.filter(x => !x.target)
-for (const kind of ['consonant', 'vowel', 'sheva-na', 'sheva-nach']) {
+for (const kind of ['word', 'consonant', 'vowel', 'vowel-ou', 'sheva-na', 'sheva-nach']) {
   const t = targets.filter(x => x.kind === kind), o = others.filter(x => x.kind === kind)
   if (!t.length && !o.length) continue
-  const cut = FLAG_BELOW[kind]
+  const cut = kind === 'word' ? FLAG_BELOW.skipped : FLAG_BELOW[kind]
   if (kind === 'sheva-na') {
     const bad = x => x.partner !== 'said'
     console.log(`\n== sheva-na: planned mistakes caught ${t.filter(bad).length}/${t.length}; correct readings flagged ${o.filter(bad).length}/${o.length}`)

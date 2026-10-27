@@ -36,6 +36,13 @@ mkdir -p models && for f in config.json preprocessor_config.json vocab.json onnx
 done   # model.onnx is 1.26 GB
 ```
 
+Other models for `compare-models.mjs` (see `MODELS` in `lib.mjs`): the xlsr
+`onnx/model_fp16.onnx` and `onnx/model_q4.onnx` from the same repo,
+`onnx-community/wav2vec2-lv-60-espeak-cv-ft-ONNX` into `models/lv60/`, and
+`anyspeech/zipa-small-crctc-500k` / `anyspeech/zipa-large-crctc-500k`
+(`model.onnx`, `model.int8.onnx`, `tokens.txt`) into `models/zipa-s/` and
+`models/zipa-l/`.
+
 `models/`, `data/` and `results/` are git-ignored. Recordings stay local.
 
 ## Runs
@@ -57,7 +64,10 @@ happened. Takes are saved, labelled, in `data/bench/` (`results.json` has the
 latest result for each). Round 1 came from the app's verses; round 2 is chosen
 for coverage (each letter pair in every position, the vowel contrasts, each
 kind of sheva). `node rescore-bench.mjs [kind] [--save]` re-scores every
-saved take with the current `lib.mjs`.
+saved take with the current `lib.mjs`. Round 3 is recorded per reader
+(adult, child): o vs u in every spelling, and Shema read the way students
+really read (pauses, "um", repeats, a restart, fast, quiet, far away, noise,
+a skipped word, a wrong word).
 
 ## Results, 2026-10-26
 
@@ -125,4 +135,56 @@ no false flag 37/38.
   rival, so a faint sound with no rival heard passes (child takes of אַף and
   סֵפֶר with no f heard). Children may need a "couldn't hear it clearly" result.
 
-Not yet covered: more readers, and a vowel model that can separate a/o and o/u.
+## Model comparison, 2026-10-26
+
+`PHONEME_MODEL=<name> node compare-models.mjs` scores every bench take (rounds
+1–2) with one model. AUC is how well a check's scores separate the planned
+mistakes from correct readings (1 = perfectly, 0.5 = chance). "Caught" and
+"false" use the cutoffs tuned on xlsr. Speed is on an M2: a 10 s verse with
+one thread, and peak memory of the whole Node process.
+
+| Model | Size | Letters AUC | Vowels AUC | Sheva na caught | Sheva nach AUC | a/o, o/u AUC | 10 s verse, 1 thread | Peak memory |
+|---|---|---|---|---|---|---|---|---|
+| xlsr (current) | 1.26 GB | 0.995 | **0.985** | **6/6** | 0.996 | 0.81 | 4.6 s | 1.5 GB |
+| xlsr fp16 | 632 MB | 0.994 | 0.984 | 6/6 | 0.992 | 0.81 | slower | 1.4 GB |
+| xlsr q4 | 241 MB | 0.993 | 0.967 | 5/6 | 0.988 | 0.79 | 4.9 s | 0.6–0.7 GB |
+| lv-60 | 1.26 GB | 0.990 | 0.947 | 4/6 | 0.969 | 0.67 | — | 1.6 GB |
+| ZIPA small | 260 MB | **0.997** | 0.949 | 2/6 | **1.000** | 0.80 | 0.36 s | 0.6 GB |
+| ZIPA small int8 | 71 MB | 0.994 | 0.950 | 2/6 | **1.000** | 0.81 | **0.24 s** | **0.35 GB** |
+| ZIPA large | 1.2 GB | 0.985 | 0.935 | 3/6 | 0.992 | 0.78 | — | 1.4 GB |
+
+Tuned per model (cutoffs in `lib.mjs`), counting the sheva na flags the user
+confirmed by ear as real:
+
+| | Letters | Vowels | Sheva na | Sheva nach |
+|---|---|---|---|---|
+| xlsr | 56/58 caught, 2/218 false | **10/13**, 2/571 false | **13/13**, 4/43 false* | 6/6, 0/50 false |
+| ZIPA small int8 | 56/58, 2/218 | 7/13, 7/571 | 10/13, 1/43 | 6/6, 1/50 |
+
+\* three are "short" shevas in fluent adult verse takes, not yet checked by
+ear; one is the Gen 1:1 take that lost its opening.
+
+- None of them separates a/o or o/u reliably.
+- ZIPA is ~15–20× faster and the int8 version fits in 512 MB, but it's
+  weaker on vowels, and its sheva na results use cutoffs tuned for xlsr.
+- ZIPA needs Kaldi log-mel features (`fbank.mjs`), which match lhotse's to
+  0.0001 per value.
+
+## Bench round 3, 2026-10-27 (adult and child; the child's takes had background noise throughout, and a lisp on shin/sin)
+
+- **O vs u works** once the readings are unambiguous ("YOOM", not "yum"):
+  the model hears it, and it now has its own check (`vowel-ou`, cutoff −1).
+  Adult: 12/13 caught, 13/13 correct takes clean (AUC 0.996 over all takes).
+  Child: 6/13 caught, 11/13 clean. Not scored in two unstressed spots readers
+  soften: the prefix וּ, and the final וּ of ־ֵינוּ (אֱלֹהֵינוּ).
+- **Skipped words** are flagged once ("left out"), and their sounds aren't
+  graded: the verse fits far better without the word (−47 for both skipped
+  takes; read words go down to −28). Cutoff −35.
+- **Not yet handled:** a wrong word (scores like any hard-to-fit word), and a
+  restart (the alignment can pick the first, wrong attempt).
+- **אֱלֹהֵינוּ:** the model often hears the tzere as a full "i" ("Elokinu")
+  in the adult's fluent Shema takes; to check by ear before deciding.
+- **Children:** noise, extra speech in takes and the lisp make the child's
+  results much weaker; flags on ש in שְׁמַע/הַשֵּׁם are likely the lisp.
+
+Not yet covered: more readers, and a vowel model that can separate a/o.

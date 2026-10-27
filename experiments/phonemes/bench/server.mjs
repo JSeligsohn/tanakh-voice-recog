@@ -60,16 +60,19 @@ createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/take') {
       const item = items.find(i => i.id === url.searchParams.get('id'))
       const kind = url.searchParams.get('kind')
-      if (!item || !['right', 'wrong'].includes(kind)) return send(res, 400, { error: 'unknown item' })
+      const reader = url.searchParams.get('reader')
+      if (!item || !['right', 'wrong'].includes(kind) || !item[kind]) return send(res, 400, { error: 'unknown item' })
+      if (item.round >= 3 && !['adult', 'child'].includes(reader)) return send(res, 400, { error: 'unknown reader' })
       const chunks = []
       for await (const c of req) chunks.push(c)
-      const name = `${item.id}__${kind}__${new Date().toISOString().replace(/[:.]/g, '-')}.wav`
+      const key = item.round >= 3 ? `${item.id}__${kind}__${reader}` : `${item.id}__${kind}`
+      const name = `${key}__${new Date().toISOString().replace(/[:.]/g, '-')}.wav`
       const file = join(DATA, name)
       await writeFile(file, padWav(Buffer.concat(chunks)))
-      const result = { file: name, at: new Date().toISOString(), trad: item.trad, text: textOf(item), said: item[kind], ...(await score(item, kind, file)) }
-      results[`${item.id}__${kind}`] = result
+      const result = { file: name, at: new Date().toISOString(), trad: item.trad, text: textOf(item), said: item[kind], ...(reader && { reader }), ...(await score(item, kind, file)) }
+      results[key] = result
       await writeFile(RESULTS, JSON.stringify(results, null, 1))
-      console.log(`${item.id} ${kind}: ${result.ok ? 'as expected' : 'NOT as expected'}  heard: ${result.heard}`)
+      console.log(`${key}: ${result.ok ? 'as expected' : 'NOT as expected'}  heard: ${result.heard}`)
       return send(res, 200, result)
     }
     send(res, 404, { error: 'not found' })

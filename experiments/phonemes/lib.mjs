@@ -8,18 +8,39 @@ import { readFile, mkdir, access } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { join, basename } from 'node:path'
 import * as ort from 'onnxruntime-node'
+import { fbank } from './fbank.mjs'
 import { tokenizeWord, getExpectedPhonetic, splitVerseWords } from '../../src/utils/hebrewRules.js'
 
 const HERE = new URL('.', import.meta.url).pathname
-const vocab = JSON.parse(await readFile(join(HERE, 'models/vocab.json'), 'utf8'))
+
+// Which phoneme model to use: PHONEME_MODEL=<name> (default xlsr). PHONEME_THREADS
+// caps the CPU threads, to estimate speed on a smaller server.
+export const MODELS = {
+  'xlsr': { file: 'models/model.onnx', vocab: 'models/vocab.json', frontend: 'wav2vec' },
+  'xlsr-fp16': { file: 'models/model_fp16.onnx', vocab: 'models/vocab.json', frontend: 'wav2vec' },
+  'xlsr-q4': { file: 'models/model_q4.onnx', vocab: 'models/vocab.json', frontend: 'wav2vec' },
+  'lv60': { file: 'models/lv60/model.onnx', vocab: 'models/lv60/vocab.json', frontend: 'wav2vec' },
+  'zipa-s': { file: 'models/zipa-s/model.onnx', tokens: 'models/zipa-s/tokens.txt', frontend: 'fbank' },
+  'zipa-s-int8': { file: 'models/zipa-s/model.int8.onnx', tokens: 'models/zipa-s/tokens.txt', frontend: 'fbank' },
+  'zipa-l': { file: 'models/zipa-l/model.onnx', tokens: 'models/zipa-l/tokens.txt', frontend: 'fbank' },
+}
+export const MODEL_NAME = process.env.PHONEME_MODEL ?? 'xlsr'
+const MODEL = MODELS[MODEL_NAME]
+if (!MODEL) throw new Error(`unknown PHONEME_MODEL ${MODEL_NAME}`)
+
+const vocab = MODEL.vocab
+  ? JSON.parse(await readFile(join(HERE, MODEL.vocab), 'utf8'))
+  : Object.fromEntries((await readFile(join(HERE, MODEL.tokens), 'utf8')).trim().split('\n').map(l => { const i = l.lastIndexOf(' '); return [l.slice(0, i), +l.slice(i + 1)] }))
 const idToToken = Object.fromEntries(Object.entries(vocab).map(([t, i]) => [i, t]))
-const BLANK = vocab['<pad>']
+const BLANK = vocab['<pad>'] ?? vocab['<blk>']
 const V = Object.keys(vocab).length
+// Tokens that aren't a sound of their own (ZIPA writes length, aspiration and
+// word breaks as separate symbols): they count as silence in alignment
+const SILENT = Object.keys(vocab).filter(t => /^(<.*>|▁|[ːˑʰʲʷˠˤ˞ʼ]|\p{M}+)$/u.test(t) && vocab[t] !== BLANK).map(t => vocab[t])
 
 // --- Audio ---------------------------------------------------------------------
 
-// Any audio file → 16 kHz mono samples (afconvert, cached), normalised to zero
-// mean and unit variance as the model's feature extractor does.
+// Any audio file → 16 kHz mono samples in [-1, 1] (afconvert, cached)
 export async function loadAudio(path) {
   const cache = join(HERE, 'data/cache')
   await mkdir(cache, { recursive: true })
@@ -33,9 +54,6 @@ export async function loadAudio(path) {
       const n = Math.floor(Math.min(size, buf.length - off - 8) / 2)
       const x = new Float32Array(n)
       for (let i = 0; i < n; i++) x[i] = buf.readInt16LE(off + 8 + 2 * i) / 32768
-      let mean = 0; for (const v of x) mean += v; mean /= n
-      let sd = 0; for (const v of x) sd += (v - mean) ** 2; sd = Math.sqrt(sd / n) + 1e-7
-      for (let i = 0; i < n; i++) x[i] = (x[i] - mean) / sd
       return x
     }
     off += 8 + size + (size % 2)
@@ -47,9 +65,21 @@ export async function loadAudio(path) {
 
 let session
 export async function frameLogProbs(samples) {
-  session ??= await ort.InferenceSession.create(join(HERE, 'models/model.onnx'), { graphOptimizationLevel: 'all' })
-  const input = new ort.Tensor('float32', samples, [1, samples.length])
-  const out = await session.run({ [session.inputNames[0]]: input })
+  const threads = +process.env.PHONEME_THREADS || 0
+  session ??= await ort.InferenceSession.create(join(HERE, MODEL.file), { graphOptimizationLevel: 'all', ...(threads && { intraOpNumThreads: threads, interOpNumThreads: 1 }) })
+  let feeds
+  if (MODEL.frontend === 'fbank') {
+    const { feats, T } = fbank(samples)
+    feeds = { x: new ort.Tensor('float32', feats, [1, T, 80]), x_lens: new ort.Tensor('int64', BigInt64Array.from([BigInt(T)]), [1]) }
+  } else {
+    // zero mean and unit variance, as the wav2vec2 feature extractor does
+    const x = Float32Array.from(samples)
+    let mean = 0; for (const v of x) mean += v; mean /= x.length
+    let sd = 0; for (const v of x) sd += (v - mean) ** 2; sd = Math.sqrt(sd / x.length) + 1e-7
+    for (let i = 0; i < x.length; i++) x[i] = (x[i] - mean) / sd
+    feeds = { [session.inputNames[0]]: new ort.Tensor('float32', x, [1, x.length]) }
+  }
+  const out = await session.run(feeds)
   const logits = out[session.outputNames[0]]
   const T = logits.dims[1]
   const lp = new Float32Array(T * V)
@@ -61,7 +91,15 @@ export async function frameLogProbs(samples) {
     const lse = max + Math.log(sum)
     for (let v = 0; v < V; v++) lp[t * V + v] = logits.data[t * V + v] - lse
   }
-  return { lp, T }
+  // fold the silent symbols into the blank
+  if (SILENT.length) {
+    for (let t = 0; t < T; t++) {
+      let sum = Math.exp(lp[t * V + BLANK])
+      for (const id of SILENT) sum += Math.exp(lp[t * V + id])
+      lp[t * V + BLANK] = Math.log(sum)
+    }
+  }
+  return { lp, T, frameSeconds: (samples.length / 16000) / T }
 }
 
 // What the model hears with no help: best token per 20 ms frame, repeats
@@ -72,7 +110,7 @@ export function freeDecode({ lp, T }) {
   for (let t = 0; t < T; t++) {
     let best = 0
     for (let v = 1; v < V; v++) if (lp[t * V + v] > lp[t * V + best]) best = v
-    if (best !== prev && best !== BLANK) out.push(idToToken[best])
+    if (best !== prev && best !== BLANK && !SILENT.includes(best)) out.push(idToToken[best])
     prev = best
   }
   return out.join(' ')
@@ -87,8 +125,8 @@ const set = (...tokens) => tokens.filter(has)
 // vowel, never counted as the wrong one.
 const VOWEL_CLASS = { a: [], e: [], i: [], o: [], u: [], schwa: [] }
 const FIRST = [
-  [/^(a|ɑ|ɐ|æ|ä|ʌ)/, 'a'], [/^(e|ɛ)/, 'e'], [/^(i|ɪ|ɨ|ᵻ|y)/, 'i'],
-  [/^(o|ɔ|ɒ)/, 'o'], [/^(u|ʊ|ɯ)/, 'u'], [/^(ə|ɚ|ɜ|ø|œ|ɵ)/, 'schwa'],
+  [/^(a|ɑ|ɐ|æ|ä|ʌ|ɶ)/, 'a'], [/^(e|ɛ)/, 'e'], [/^(i|ɪ|ɨ|ᵻ|y|ʏ)/, 'i'],
+  [/^(o|ɔ|ɒ)/, 'o'], [/^(u|ʊ|ɯ|ʉ)/, 'u'], [/^(ə|ɚ|ɜ|ø|œ|ɵ|ɘ|ɞ|ɤ)/, 'schwa'],
 ]
 for (const t of Object.keys(vocab)) {
   // vowels only: no consonant letters (but "ər" and "ɚ" are a reduced vowel)
@@ -97,14 +135,16 @@ for (const t of Object.keys(vocab)) {
   if (hit) VOWEL_CLASS[hit[1]].push(t)
 }
 const FULL = ['a', 'e', 'i', 'o', 'u']
-// Pairs the model can't tell apart (one-frame spikes spread between them), so
-// they aren't scored against each other: "o-MEN" and "a-MEN" both come out ɑ,
-// and o/u blur the same way.
+export const vowelClassTokens = c => VOWEL_CLASS[c]
+// Pairs not scored against each other in the main vowel check: a/o, which
+// the model can't tell apart ("o-MEN" and "a-MEN" both come out ɑ), and o/u,
+// which has a check of its own (`ou` on the unit) with its own cutoff
 const NEAR = { a: ['o'], o: ['a', 'u'], u: ['o'] }
-// An optional glide after a vowel: tzere "ei" (the yod after it is silent in
-// the rules), holam "oi"/"ou". Only the lax glide sounds, so a plain "i" for
-// tzere ("ITZ" for עֵץ) can't pass as e + glide.
-const GLIDE = { tzere: ['ɪ', 'j'], holam: ['ɪ', 'ʊ', 'j', 'w'] }
+// An optional glide after a vowel: tzere "ei", holam "oi"/"ou". Only the lax
+// glide sounds, so a plain "i" for tzere ("ITZ" for עֵץ) can't pass as e +
+// glide, except where a yod is written after the tzere (אֱלֹהֵינוּ): there
+// "ei" is what readers say, and the model often hears its "i" in full.
+const GLIDE = { tzere: ['ɪ', 'j'], holam: ['ɪ', 'ʊ', 'j', 'w'], yud: [...VOWEL_CLASS.i, 'j'] }
 const VOWELS = Object.values(VOWEL_CLASS).flat()
 const vowelTokens = classes => [...classes, 'schwa'].flatMap(c => VOWEL_CLASS[c])
 // Model tokens that count as each of our sounds
@@ -113,10 +153,12 @@ const CONSONANT = {
   k: set('k', 'kʰ', 'kʲ', 'kː', 'q', 'c'), ch: set('x', 'χ', 'xʲ', 'ħ', 'h', 'ç'),
   p: set('p', 'pʰ', 'pʲ', 'pː'), f: set('f', 'fʲ', 'ɸ'),
   t: set('t', 'tʰ', 't̪', 'tʲ', 'tː'), s: set('s', 's̪', 'sʲ', 'sː'), sh: set('ʃ', 'ɕ', 'ʂ', 'ʃʲ'),
-  d: set('d', 'dʲ', 'd̪', 'dː'), g: set('ɡ', 'ɡʲ', 'ɡː'), h: set('h', 'ħ'), z: set('z', 'ʒ'),
+  d: set('d', 'dʲ', 'd̪', 'dː'), g: set('ɡ', 'g', 'ɡʲ', 'ɡː'), h: set('h', 'ħ', 'ɦ'), z: set('z', 'ʒ'),
   y: set('j', 'ʝ', 'i'), l: set('l', 'ɫ', 'lː', 'ʎ'), m: set('m', 'mʲ'), n: set('n', 'nʲ', 'ŋ', 'ɲ'),
   r: set('ʁ', 'r', 'ɾ', 'ɹ', 'ɻ', 'ʀ', 'χ', 'ɣ'), ts: set('ts', 'tsʲ', 'tsː', 'ʦ'),
 }
+// a model without a "ts" symbol (ZIPA) writes it t + s
+if (!CONSONANT.ts.length) CONSONANT.ts = set('t', 's')
 // The partner each tested sound is scored against
 export const PARTNER = { sh: 's', s: 'sh', b: 'v', v: 'b', k: 'ch', ch: 'k', p: 'f', f: 'p', t: 's' }
 
@@ -141,7 +183,7 @@ export function expectedUnits(text, settings = {}) {
       }
       const where = { word, wi, letter: a.letter, atomIndex: seg.atomIndex }
       const vowelUnit = seg.vowel && vowelUnitFor(seg, where, segments[k + 1]?.consonant, segments[k - 1]?.shevaType === 'nach')
-      const glideTokens = seg.vowel && (GLIDE[a.vowel] ?? (a.yudAfter ? GLIDE.tzere : null))
+      const glideTokens = seg.vowel && (a.yudAfter ? GLIDE.yud : GLIDE[a.vowel])
       const glide = glideTokens && { kind: 'g', tokens: glideTokens.filter(has), ...where, optional: true }
       const ordered = seg.patachGenuvah ? [vowelUnit, consonantUnit] : [consonantUnit, vowelUnit, glide]
       units.push(...ordered.filter(Boolean))
@@ -174,7 +216,19 @@ function vowelUnitFor(seg, where, nextConsonant, afterNach) {
   return {
     kind: 'v', sound: seg.vowel, tokens: vowelTokens(accepted), ...where, optional,
     vowelTest: nikkud, accepted, rivals: FULL.filter(v => !accepted.includes(v) && !accepted.some(a => NEAR[a]?.includes(v))),
+    ou: ouPartner(seg, accepted, where.word),
   }
+}
+
+// o vs u (וֹ/וּ, the vowels students confuse most): the other one, if this
+// vowel is scored for it. Not in two unstressed spots readers soften: the
+// prefix וּ "u-" ("and"), and the final וּ of ־ֵינוּ (אֱלֹהֵינוּ, said "-no").
+function ouPartner(seg, accepted, word) {
+  if (accepted.length !== 1 || !['o', 'u'].includes(accepted[0])) return null
+  const a = seg.atom
+  if (a.vowel === 'shuruk' && a.letter === 'ו' && seg.atomIndex === 0) return null
+  if (a.vowel === 'shuruk' && a.isFinal && /ינוּ־?$/.test(word)) return null
+  return accepted[0] === 'o' ? 'u' : 'o'
 }
 
 function testedLetter(atom, sound) {
@@ -289,15 +343,6 @@ const vowelMass = ({ lp }, t) => VOWEL_IDS.reduce((sum, id) => sum + Math.exp(lp
 // ran together. Bench round 1: clearly said 0.67–0.98, short 0.12–0.34, left
 // out ≤ 0.03. The trace decides when the alignment disagrees: in יְדֵי the
 // model hears "ye" as an "i" and gives it to the yod.
-// A sheva that is heard but comes out as a reduced "ə" rather than "e" is
-// short too: all three deliberate "left out" takes the trace missed (l-CHA,
-// mish-p-CHOT, BNEI) were mostly ə, and clearly said ones mostly e.
-const SAID_TRACE = 0.6, SOME_TRACE = 0.1, MUMBLED = 0.35
-function shevaNaVerdict(llr, trace, canCluster, heardAs) {
-  if (llr >= 0 || trace >= SAID_TRACE) return heardAs?.class === 'schwa' && heardAs.schwa >= MUMBLED ? 'short' : 'said'
-  return trace >= SOME_TRACE || !canCluster ? 'short' : 'left out'
-}
-
 // Which vowel class has the most probability over a span: { class, share }
 function vowelQuality(post, span) {
   if (!span) return null
@@ -311,11 +356,32 @@ function vowelQuality(post, span) {
   return { class: c, share: +(m / total).toFixed(2), schwa: +(mass.schwa / total).toFixed(2), e: +(mass.e / total).toFixed(2) }
 }
 
-// How far below zero a score must fall to be flagged. Vowels and shevas are
-// noisier than consonants (rounds 1–2: correct vowels reached −2.0, the
-// vowel mistakes it can hear scored −2.3 to −4.9).
-export const FLAG_BELOW = { consonant: 0, vowel: -2.2, 'sheva-nach': -2.5 }
-export const isFlagged = s => s.kind === 'sheva-na' ? s.partner !== 'said' : s.llr < FLAG_BELOW[s.kind]
+// Cutoffs, tuned per model on the bench takes (rounds 1–2, with the sheva na
+// flags the user confirmed by ear counted as real).
+//   consonant, vowel, vowel-ou, sheva-nach: flag a score below this
+//   said:    a sheva na needs at least this much vowel trace to count as said
+//   some:    below this trace, with letters that can cluster, it was left out
+//   skipped: a word whose verse fits this much better without it was left out
+//            (round 3: the two skipped words −47, read words down to −28;
+//            not yet tuned for ZIPA)
+//   mumbled: said, but mostly a reduced "ə" (at least this share) is short too;
+//            the deliberate "left out" takes that still had a vowel (l-CHA,
+//            mish-p-CHOT, BNEI) were mostly ə, clearly said ones mostly e
+const CUTOFFS = {
+  xlsr: { consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'sheva-nach': -2.5, said: 0.6, some: 0.1, mumbled: 0.35, skipped: -35 },
+  zipa: { consonant: -1, vowel: -2.5, 'vowel-ou': -2, 'sheva-nach': -1.5, said: 0.6, some: 0.1, mumbled: 0.6, skipped: -35 },
+}
+export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr']
+
+// A sheva na must be heard (shevas enforced). A short one often gets no spike
+// of its own but leaves a trace of vowel; with no trace at all, the letters
+// ran together. The trace decides, not the alignment: in יְדֵי the model hears
+// "ye" as an "i" and gives it to the yod.
+function shevaNaVerdict(trace, canCluster, heardAs) {
+  if (trace >= FLAG_BELOW.said) return heardAs?.class === 'schwa' && heardAs.schwa >= FLAG_BELOW.mumbled ? 'short' : 'said'
+  return trace >= FLAG_BELOW.some || !canCluster ? 'short' : 'left out'
+}
+export const isFlagged = s => s.kind === 'word' || (s.kind === 'sheva-na' ? s.partner !== 'said' : s.llr < FLAG_BELOW[s.kind])
 
 // Score each tested sound against what a reader might say instead. Each test
 // re-aligns the whole verse with one unit changed, so the comparison is a
@@ -323,12 +389,28 @@ export const isFlagged = s => s.kind === 'sheva-na' ? s.partner !== 'said' : s.l
 // fits better, i.e. the reader likely said it.
 //   consonant   the written sound vs its partner (sh/s, b/v, k/kh, p/f, t/s)
 //   vowel       the accepted vowels vs all the others together
+//   vowel-ou    o vs u
 //   sheva-na    said vs left out, then said / short / left out (shevaNaVerdict)
 //   sheva-nach  silent vs a vowel added after the letter
+//   word        a word left out (then none of its sounds are scored)
 export function scoreContrasts(post, units, base = align(post, units)) {
   const swap = (i, change) => align(post, units.map((x, j) => j === i ? { ...x, ...change } : x))
   const out = []
+  // A skipped word: the verse fits far better without it. Its sounds aren't
+  // graded (forced alignment would squeeze it into the audio anyway).
+  const skipped = new Set()
+  const words = [...new Set(units.map(u => u.wi))]
+  if (words.length > 1) {
+    for (const w of words) {
+      const llr = base.score - align(post, units.filter(u => u.wi !== w)).score
+      if (llr < FLAG_BELOW.skipped) {
+        skipped.add(w)
+        out.push({ i: units.findIndex(u => u.wi === w), letter: '', word: units.find(u => u.wi === w).word, kind: 'word', test: 'skipped', expected: 'said', partner: 'left out', llr })
+      }
+    }
+  }
   units.forEach((u, i) => {
+    if (skipped.has(u.wi)) return
     const at = { i, letter: u.letter, word: u.word, span: base.spans[i] }
     if (u.test) {
       const partner = u.test === 'sav' ? 't' : PARTNER[u.sound]
@@ -345,13 +427,17 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       let trace = 0
       for (let t = from; t < to; t++) trace = Math.max(trace, vowelMass(post, t))
       const llr = said - without.score
-      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(llr, trace, u.canCluster, heardAs), llr, trace, heardAs })
+      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(trace, u.canCluster, heardAs), llr, trace, heardAs })
     } else if (u.vowelTest && u.rivals.length) {
       const alt = swap(i, { tokens: u.rivals.flatMap(v => VOWEL_CLASS[v]) })
       const llr = base.score - alt.score
       // name the vowel that fits best, for the message
       const partner = llr < 0 ? u.rivals.map(v => [v, swap(i, { tokens: VOWEL_CLASS[v] }).score]).sort((a, b) => b[1] - a[1])[0][0] : u.rivals.join('/')
       out.push({ ...at, kind: 'vowel', test: u.vowelTest, expected: u.accepted.join('/'), partner, llr })
+    }
+    if (u.ou) {
+      const llr = base.score - swap(i, { tokens: vowelTokens([u.ou]) }).score
+      out.push({ ...at, kind: 'vowel-ou', test: u.vowelTest, expected: u.accepted[0], partner: u.ou, llr })
     }
     if (u.nach) {
       const added = align(post, [...units.slice(0, i + 1), { kind: 'v', tokens: VOWELS, word: u.word }, ...units.slice(i + 1)]).score

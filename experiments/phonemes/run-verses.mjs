@@ -22,7 +22,7 @@ for (const c of clips) {
   const units = expectedUnits(c.text, { tradition: c.tradition })
   const base = align(post, units)
   const scores = scoreContrasts(post, units, base)
-  results.push({ ...c, heard: freeDecode(post), scores: scores.map(({ word, letter, test, expected, partner, llr, span }) => ({ word, letter, test, expected, partner, llr: +llr.toFixed(2), at: span && +(span[0] * 0.02).toFixed(2) })) })
+  results.push({ ...c, heard: freeDecode(post), scores: scores.map(({ word, letter, test, expected, partner, llr, span }) => ({ word, letter, test, expected, partner, llr: +llr.toFixed(2), at: span && +(span[0] * post.frameSeconds).toFixed(2) })) })
   if (c.source === 'tester') {
     console.log(`\n${c.id} (${c.tradition})\n  gpt-audio: ${c.gpt}\n  phonemes:  ${results.at(-1).heard}`)
     for (const s of results.at(-1).scores) console.log(`   ${s.llr < 0 ? 'FLAG' : '    '} ${s.word.padEnd(14)} ${s.test.padEnd(5)} ${s.expected}→${s.partner}  ${String(s.llr).padStart(6)}  @${s.at}s`)

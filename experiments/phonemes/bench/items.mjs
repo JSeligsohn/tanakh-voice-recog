@@ -5,12 +5,18 @@
 //   { id, round, group, text | pasuk, trad, right: how to say it, wrong: the mistake,
 //     flag: [{ word, letter }            a consonant
 //            | { word, vowel }           a vowel, by nikkud name (hiriq, tzere, ...)
-//            | { word, vowel: 'sheva-na' | 'sheva-nach' }] }
+//            | { word, vowel: 'sheva-na' | 'sheva-nach' }
+//            | { word, problem: 'skipped' | 'wrong word' }] }
+//   right or wrong may be left out; a wrong take with no flag is a variation
+//   that should pass (a pause, a self-correction)
 //
 // Round 1 came from the app's verses; round 2 is chosen for coverage: each
 // letter pair in every position (start, after a sheva, doubled, soft, final),
 // the vowel contrasts the model can hear, and each kind of sheva. The page
-// shows the latest round; earlier takes are kept and still re-scored.
+// shows the latest round; earlier takes are kept and still re-scored. Round 3
+// is recorded per reader (adult, child): o vs u, the vowels students confuse
+// most (וֹ/וּ), for building a vowel check that measures the sound itself; and
+// how real students read (pauses, repeats, skipped words, noise).
 
 export const groups = [
   { id: 'shin', title: 'Shin and sin', note: 'Start, middle and end of a word, and sin with a cholam (שֹׂ).' },
@@ -23,9 +29,11 @@ export const groups = [
   { id: 'blind', title: 'Vowels the model can\'t tell apart yet', note: 'a vs o and o vs u. These will show as missed; they are recorded to test other models later.' },
   { id: 'sheva', title: 'Sheva', note: 'Sheva na must be heard: flagged if left out (letters run together) or said too short. Sheva nach is silent: flagged if a vowel is added.' },
   { id: 'verse', title: 'Whole verses' },
+  { id: 'ou', title: 'O and u', note: 'The vowels students confuse most (וֹ vs וּ). OH is o as in "bone"; OO is u as in "moon". Scored with their own o-vs-u check. Both readers, please.' },
+  { id: 'reading', title: 'How students really read', note: 'Shema with pauses, repeats, noise and so on. Skipped and wrong words aren\'t detected yet (they\'ll show as missed); the rest should still catch the mistake and nothing else.' },
 ]
 
-export const latestRound = 2
+export const latestRound = 3
 
 const S = 'sephardic', A = 'ashkenazic'
 
@@ -153,12 +161,41 @@ export const items = [
     flag: [{ word: 'דַרְכֵי־', vowel: 'sheva-nach' }, { word: 'נְתִיבוֹתֶיהָ', letter: 'ב' }] },
   { round: 2, id: 'r2-veeescha', group: 'verse', pasuk: 'gen-12-2', trad: S, right: 'Read it as written.', wrong: 'Say "ve-e-esh-CHA" and "va-a-BA-rech-cha", the rest correctly.',
     flag: [{ word: 'וְאֶעֶשְׂךָ', letter: 'ש' }, { word: 'וַאֲבָרֶכְךָ', letter: 'ב' }] },
+  // ═══ Round 3: o vs u, and how students really read (per reader) ═══
+  // O and u, both directions, every spelling
+  { round: 3, id: 'r3-lo', group: 'ou', text: 'לוֹ', trad: S, right: 'LOH', wrong: 'LOO', flag: [{ word: 'לוֹ', vowel: 'holam' }] },
+  { round: 3, id: 'r3-lu', group: 'ou', text: 'לוּ', trad: S, right: 'LOO', wrong: 'LOH', flag: [{ word: 'לוּ', vowel: 'shuruk' }] },
+  { round: 3, id: 'r3-hu', group: 'ou', text: 'הוּא', trad: S, right: 'HOO', wrong: 'HOH', flag: [{ word: 'הוּא', vowel: 'shuruk' }] },
+  { round: 3, id: 'r3-yom', group: 'ou', text: 'יוֹם', trad: S, right: 'YOHM', wrong: 'YOOM', flag: [{ word: 'יוֹם', vowel: 'holam' }] },
+  { round: 3, id: 'r3-kum', group: 'ou', text: 'קוּם', trad: S, right: 'KOOM', wrong: 'KOHM', flag: [{ word: 'קוּם', vowel: 'shuruk' }] },
+  { round: 3, id: 'r3-tov', group: 'ou', text: 'טוֹב', trad: S, right: 'TOHV', wrong: 'TOOV', flag: [{ word: 'טוֹב', vowel: 'holam' }] },
+  { round: 3, id: 'r3-or', group: 'ou', text: 'אוֹר', trad: S, right: 'OHR', wrong: 'OOR', flag: [{ word: 'אוֹר', vowel: 'holam' }] },
+  { round: 3, id: 'r3-moshe', group: 'ou', text: 'מֹשֶׁה', trad: S, right: 'moh-SHEH', wrong: 'moo-SHEH (cholam with no vav, said as "oo")', flag: [{ word: 'מֹשֶׁה', vowel: 'holam' }] },
+  { round: 3, id: 'r3-kulam', group: 'ou', text: 'כֻּלָּם', trad: S, right: 'koo-LAHM', wrong: 'koh-LAHM (kubutz said as "oh")', flag: [{ word: 'כֻּלָּם', vowel: 'qubuts' }] },
+  { round: 3, id: 'r3-baruch', group: 'ou', text: 'בָּרוּךְ', trad: S, right: 'bah-ROOCH', wrong: 'bah-ROHCH', flag: [{ word: 'בָּרוּךְ', vowel: 'shuruk' }] },
+  { round: 3, id: 'r3-gadol', group: 'ou', text: 'גָּדוֹל', trad: S, right: 'gah-DOHL', wrong: 'gah-DOOL', flag: [{ word: 'גָּדוֹל', vowel: 'holam' }] },
+  { round: 3, id: 'r3-shalom', group: 'ou', text: 'שָׁלוֹם', trad: S, right: 'shah-LOHM', wrong: 'shah-LOOM', flag: [{ word: 'שָׁלוֹם', vowel: 'holam' }] },
+  { round: 3, id: 'r3-tora', group: 'ou', text: 'תּוֹרָה', trad: S, right: 'toh-RAH', wrong: 'too-RAH', flag: [{ word: 'תּוֹרָה', vowel: 'holam' }] },
+
+  // How students really read: Shema, with something else going on
+  { round: 3, id: 'r3-pause', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read it, pausing 3 seconds after יִשְׂרָאֵל.', wrong: 'Same pause, and say "Sema".', flag: [{ word: 'שְׁמַע', letter: 'ש' }] },
+  { round: 3, id: 'r3-um', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read it, saying "um" once in the middle.', wrong: 'Same "um", and say "Yishrael".', flag: [{ word: 'יִשְׂרָאֵל', letter: 'ש' }] },
+  { round: 3, id: 'r3-repeat', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read it, saying יִשְׂרָאֵל twice ("Yisrael, Yisrael").', wrong: 'Same repeat, and say "Hasem" both times.', flag: [{ word: 'הַשֵּׁם', letter: 'ש' }] },
+  { round: 3, id: 'r3-restart', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read "Shema Yisrael", stop, then start again and read it all.', wrong: 'Start with "Sema Yisrael", stop, then read it all correctly. (Self-corrected: should pass.)', flag: [] },
+  { round: 3, id: 'r3-fast', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read it as fast as you can.', wrong: 'As fast, and say "Sema".', flag: [{ word: 'שְׁמַע', letter: 'ש' }] },
+  { round: 3, id: 'r3-quiet', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read it very quietly, almost a whisper.', wrong: 'As quietly, and say "Yishrael".', flag: [{ word: 'יִשְׂרָאֵל', letter: 'ש' }] },
+  { round: 3, id: 'r3-far', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read it from across the room.', wrong: 'From as far, and say "Hasem".', flag: [{ word: 'הַשֵּׁם', letter: 'ש' }] },
+  { round: 3, id: 'r3-noise', group: 'reading', pasuk: 'deut-6-4', trad: S, right: 'Read it with music or TV on in the background.', wrong: 'Same noise, and say "Sema".', flag: [{ word: 'שְׁמַע', letter: 'ש' }] },
+  { round: 3, id: 'r3-skip', group: 'reading', pasuk: 'deut-6-4', trad: S, wrong: 'Leave out אֱלֹהֵינוּ, the rest correctly.', flag: [{ word: 'אֱלֹהֵינוּ', problem: 'skipped' }] },
+  { round: 3, id: 'r3-wrongword', group: 'reading', pasuk: 'deut-6-4', trad: S, wrong: 'Say "gadol" instead of אֶחָד, the rest correctly.', flag: [{ word: 'אֶחָד', problem: 'wrong word' }] },
 ]
 
 // Does a scored sound match a flag in `item.flag`? Ignores maqef and
 // final-letter forms.
 const BASE = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' }
 const sameWord = (a, b) => a.replace(/־/g, '') === b.replace(/־/g, '')
-export const matchesFlag = (flag, s) => sameWord(flag.word, s.word) && (flag.vowel
-  ? (flag.vowel.startsWith('sheva') ? s.kind === flag.vowel : s.kind === 'vowel' && s.test === flag.vowel)
+export const matchesFlag = (flag, s) => sameWord(flag.word, s.word) && (flag.problem
+  ? s.kind === 'word' && s.test === flag.problem
+  : flag.vowel
+  ? (flag.vowel.startsWith('sheva') ? s.kind === flag.vowel : (s.kind === 'vowel' || s.kind === 'vowel-ou') && s.test === flag.vowel)
   : s.kind === 'consonant' && (BASE[flag.letter] ?? flag.letter) === (BASE[s.letter] ?? s.letter))

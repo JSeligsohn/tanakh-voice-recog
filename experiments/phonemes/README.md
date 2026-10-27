@@ -180,10 +180,25 @@ ear; one is the Gen 1:1 take that lost its opening.
 - **Skipped words** are flagged once ("left out"), and their sounds aren't
   graded: the verse fits far better without the word (−47 for both skipped
   takes; read words go down to −28). Cutoff −35.
-- **Not yet handled:** a wrong word (scores like any hard-to-fit word), and a
-  restart (the alignment can pick the first, wrong attempt).
-- **אֱלֹהֵינוּ:** the model often hears the tzere as a full "i" ("Elokinu")
-  in the adult's fluent Shema takes; to check by ear before deciding.
+- **Words** (built after round 3): optional "junk" between words soaks up
+  false starts, "um"s and restarts, at a cost per sound (silence is free;
+  `PHONEME_JUNK`, default 2). Then, per word: **skipped** if the verse fits
+  far better without it (taken out first, so its sounds aren't squeezed into
+  its neighbours); **wrong word** if it fits worse than junk and what was
+  heard there differs in at least 90% of its sounds ("gadol" for אֶחָד);
+  **unclear** if it fits worse than junk and almost nothing was heard there
+  (whispered, cut off). A flagged word's sounds aren't graded. On all takes:
+  skipped 2/2, wrong word 2/2; on readings meant to be correct, 1 wrong word
+  (a child's garbled "adasinta") and 12 unclear, mostly whispered or cut-off.
+- A chataf on א or ע is now required (it's the whole syllable), else the junk
+  before the word swallowed e-NI and a-lo-KIM.
+- **Restarts:** the child's corrected "Sema… Shema" now passes; the adult's
+  still doesn't (the second attempt's "m" wasn't heard, so the first fits
+  better).
+- **אֱלֹהֵינוּ:** the model heard the tzere as a full "ee" ("Elokinu") in six
+  of the adult's Shema takes; the user listened and all six were a clear
+  "Elokeinu". So a tzere before a written yod in a longer word accepts "ee";
+  in a one-syllable word (בֵּית) "BIT" is still caught.
 - **Children:** noise, extra speech in takes and the lisp make the child's
   results much weaker; flags on ש in שְׁמַע/הַשֵּׁם are likely the lisp.
 

@@ -67,7 +67,9 @@ const sound = x => SOUND[x] ?? `"${x}"`
 const expectedVowel = f => f.test === 'tzere' ? '"eh" or "ei" (bed, they)' : sound(f.expected)
 // what was flagged in a take
 const flagText = f => {
-  if (f.kind === 'word') return `${inWord(f.word)} was left out`
+  if (f.kind === 'word') return f.test === 'skipped' ? `${inWord(f.word)} was left out`
+    : f.test === 'wrong word' ? `${inWord(f.word)} wasn't read: heard something else ("${esc(f.partner)}")`
+    : `${inWord(f.word)} couldn't be heard clearly`
   if (f.kind === 'vowel' || f.kind === 'vowel-ou') return `the ${NIKKUD[f.test] ?? f.test} in ${inWord(f.word)}: heard ${sound(f.partner)}, should be ${expectedVowel(f)}`
   if (f.kind === 'sheva-na') return f.partner === 'short'
     ? `the sheva na in ${inWord(f.word)} was only slightly heard (say it more clearly)`

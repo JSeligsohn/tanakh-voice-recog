@@ -118,8 +118,49 @@ export function freeDecode({ lp, T }) {
 
 // --- Expected sounds ---------------------------------------------------------------
 
+// What the model hears unaided over frames [from, to), as our coarse sounds
+// ("sh", "v", "a", ...): each token mapped to the first sound class it's in
+export function heardSounds({ lp, T }, from = 0, to = T) {
+  const out = []
+  let prev = -1
+  for (let t = from; t < to; t++) {
+    let best = 0
+    for (let v = 1; v < V; v++) if (lp[t * V + v] > lp[t * V + best]) best = v
+    if (best !== prev && best !== BLANK && !SILENT.includes(best)) out.push(soundOf(idToToken[best]))
+    prev = best
+  }
+  return out.filter(Boolean)
+}
+let SOUND_OF
+function soundOf(token) {
+  if (!SOUND_OF) {
+    SOUND_OF = {}
+    for (const [c, toks] of Object.entries(VOWEL_CLASS)) for (const t of toks) SOUND_OF[t] = c === 'schwa' ? 'e' : c
+    for (const [c, toks] of Object.entries(CONSONANT)) for (const t of toks) SOUND_OF[t] ??= c
+  }
+  return SOUND_OF[token] ?? token
+}
+
 const has = t => t in vocab
 const set = (...tokens) => tokens.filter(has)
+// "Junk": any sounds at all (a false start, an "um", another word), each at a
+// cost, with the silence between them free, so the alignment can set them aside
+export const junkUnit = (penalty, extra = {}) => ({ kind: 'j', tokens: [], penalty, optional: true, ...extra })
+function junkLps(post, penalty) {
+  post.cache ??= new Map()
+  const key = 'junk' + penalty
+  let out = post.cache.get(key)
+  if (out) return out
+  const { lp, T } = post
+  out = new Float64Array(T)
+  for (let t = 0; t < T; t++) {
+    const pBlank = Math.exp(lp[t * V + BLANK])
+    out[t] = Math.log(pBlank + Math.max(0, 1 - pBlank) * Math.exp(-penalty))
+  }
+  post.cache.set(key, out)
+  return out
+}
+
 // The model's vowel tokens (many carry tone marks from other languages),
 // grouped by their first sound. "schwa" is a reduced vowel: accepted for any
 // vowel, never counted as the wrong one.
@@ -172,6 +213,7 @@ export function expectedUnits(text, settings = {}) {
   splitVerseWords(text).forEach((word, wi) => {
     const atoms = tokenizeWord(word)
     const { segments } = getExpectedPhonetic(atoms, settings)
+    const fullVowels = segments.filter(x => x.vowel && x.atom.vowel !== 'sheva').length
     segments.forEach((seg, k) => {
       const a = seg.atom
       const c = seg.consonant
@@ -182,14 +224,24 @@ export function expectedUnits(text, settings = {}) {
         nach: seg.shevaType === 'nach' && !a.isFinal,
       }
       const where = { word, wi, letter: a.letter, atomIndex: seg.atomIndex }
-      const vowelUnit = seg.vowel && vowelUnitFor(seg, where, segments[k + 1]?.consonant, segments[k - 1]?.shevaType === 'nach')
+      const vowelUnit = seg.vowel && vowelUnitFor(seg, where, segments[k + 1]?.consonant, segments[k - 1]?.shevaType === 'nach', fullVowels)
       const glideTokens = seg.vowel && (a.yudAfter ? GLIDE.yud : GLIDE[a.vowel])
       const glide = glideTokens && { kind: 'g', tokens: glideTokens.filter(has), ...where, optional: true }
       const ordered = seg.patachGenuvah ? [vowelUnit, consonantUnit] : [consonantUnit, vowelUnit, glide]
       units.push(...ordered.filter(Boolean))
     })
   })
-  return units
+  return settings.junk === false ? units : withJunk(units)
+}
+
+// Optional junk before, between and after the words, so a false start, an
+// "um" or a restart is set aside rather than graded as the word
+const JUNK_PENALTY = +(process.env.PHONEME_JUNK ?? 2)
+function withJunk(units) {
+  if (!JUNK_PENALTY) return units
+  const out = [junkUnit(JUNK_PENALTY)]
+  units.forEach((u, i) => { out.push(u); if (units[i + 1]?.wi !== u.wi) out.push(junkUnit(JUNK_PENALTY)) })
+  return out
 }
 
 // Can a sheva na be left out entirely, so the letters run together ("shma"
@@ -201,9 +253,11 @@ export function expectedUnits(text, settings = {}) {
 const CAN_LEAD = new Set(['b', 'v', 'p', 'f', 'k', 'ch', 'g', 'd', 't', 's', 'sh', 'z', 'ts'])
 const clusters = (c1, c2, afterNach) => !afterNach && CAN_LEAD.has(c1) && !!c2 && c1 !== c2
 
-function vowelUnitFor(seg, where, nextConsonant, afterNach) {
+function vowelUnitFor(seg, where, nextConsonant, afterNach, fullVowels) {
   const nikkud = seg.atom.vowel
-  const optional = seg.altVowels.includes('') || nikkud.startsWith('hataf')
+  // a chataf is short and may be swallowed, except on a silent letter (א, ע),
+  // where it is the whole syllable (אֲנִי "a-ni")
+  const optional = seg.altVowels.includes('') || (nikkud.startsWith('hataf') && !!seg.consonant)
   // Sheva na: any vowel counts as saying it; the test is whether it was said,
   // where it could have been left out
   if (nikkud === 'sheva') {
@@ -212,7 +266,12 @@ function vowelUnitFor(seg, where, nextConsonant, afterNach) {
       vowelTest: seg.shevaType === 'na' ? 'sheva-na' : null, canCluster: clusters(seg.consonant, nextConsonant, afterNach),
     }
   }
-  const accepted = [...new Set([seg.vowel, ...seg.altVowels].filter(v => FULL.includes(v)))]
+  // A tzere before a written yod in a longer word (אֱלֹהֵינוּ): the model hears
+  // a fluent "ei" there as "ee" (the user listened: every take flagged was a
+  // clear "Elokeinu"), so "ee" passes. In a one-syllable word (בֵּית) the "ei"
+  // is long and the model hears it, so "BIT" is still a mistake.
+  const eiAsEe = nikkud === 'tzere' && seg.atom.yudAfter && fullVowels > 1 ? ['i'] : []
+  const accepted = [...new Set([seg.vowel, ...seg.altVowels, ...eiAsEe].filter(v => FULL.includes(v)))]
   return {
     kind: 'v', sound: seg.vowel, tokens: vowelTokens(accepted), ...where, optional,
     vowelTest: nikkud, accepted, rivals: FULL.filter(v => !accepted.includes(v) && !accepted.some(a => NEAR[a]?.includes(v))),
@@ -272,7 +331,7 @@ export function align(post, units) {
   const ids = units.map(u => u.tokens.map(t => vocab[t]))
   const S = 2 * n + 1 // even = blank, odd = unit (s-1)/2
   const emit = new Float32Array(T * S)
-  const cls = ids.map(x => classLps(post, x))
+  const cls = units.map((u, k) => u.kind === 'j' ? junkLps(post, u.penalty) : classLps(post, ids[k]))
   for (let t = 0; t < T; t++) {
     const b = lp[t * V + BLANK]
     for (let s = 0; s < S; s++) emit[t * S + s] = s % 2 === 0 ? b : cls[(s - 1) >> 1][t]
@@ -356,6 +415,33 @@ function vowelQuality(post, span) {
   return { class: c, share: +(m / total).toFixed(2), schwa: +(mass.schwa / total).toFixed(2), e: +(mass.e / total).toFixed(2) }
 }
 
+// What was heard where a word should be: the word replaced by required junk,
+// and the model's unaided sounds between the words on either side
+function heardInstead(post, units, w) {
+  const first = units.findIndex(u => u.wi === w && u.kind !== 'j'), last = units.findLastIndex(u => u.wi === w && u.kind !== 'j')
+  const rep = [...units.slice(0, first), junkUnit(JUNK_PENALTY || 2, { optional: false }), ...units.slice(last + 1)]
+  const { spans } = align(post, rep)
+  const before = spans.slice(0, first).findLast((sp, k) => sp && rep[k].kind !== 'j')
+  const after = spans.slice(first + 1).find((sp, k) => sp && rep[first + 1 + k].kind !== 'j')
+  return heardSounds(post, before ? before[1] : 0, after ? after[0] : post.T)
+}
+
+// Share of a word's sounds that differ from what was heard (edit distance;
+// optional sounds and h drop free, two different vowels cost half)
+function soundDistance(units, heard) {
+  const exp = units.map(u => ({ sounds: u.kind === 'v' ? (u.accepted ?? FULL) : [u.sound], optional: !!u.optional || u.sound === 'h' }))
+  const isV = x => FULL.includes(x)
+  const n = exp.length, m = heard.length, d = Array.from({ length: n + 1 }, () => new Float64Array(m + 1))
+  for (let i = 1; i <= n; i++) d[i][0] = d[i - 1][0] + (exp[i - 1].optional ? 0 : 1)
+  for (let j = 1; j <= m; j++) d[0][j] = j
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    const e = exp[i - 1], h = heard[j - 1]
+    const sub = e.sounds.includes(h) ? 0 : isV(e.sounds[0]) && isV(h) ? 0.5 : 1
+    d[i][j] = Math.min(d[i - 1][j - 1] + sub, d[i - 1][j] + (e.optional ? 0 : 1), d[i][j - 1] + 1)
+  }
+  return d[n][m] / Math.max(1, exp.filter(e => !e.optional).length)
+}
+
 // Cutoffs, tuned per model on the bench takes (rounds 1–2, with the sheva na
 // flags the user confirmed by ear counted as real).
 //   consonant, vowel, vowel-ou, sheva-nach: flag a score below this
@@ -364,12 +450,17 @@ function vowelQuality(post, span) {
 //   skipped: a word whose verse fits this much better without it was left out
 //            (round 3: the two skipped words −47, read words down to −28;
 //            not yet tuned for ZIPA)
+//   unclear: a word that fits this much worse than junk doesn't sound like
+//            itself: "unclear" if hardly anything was heard there (cut off,
+//            whispered), "wrong word" if what was heard differs from it in at
+//            least `different` of its sounds (round 3: "gadol" for אֶחָד, 1.0;
+//            one-sound mistakes up to 0.79)
 //   mumbled: said, but mostly a reduced "ə" (at least this share) is short too;
 //            the deliberate "left out" takes that still had a vowel (l-CHA,
 //            mish-p-CHOT, BNEI) were mostly ə, clearly said ones mostly e
 const CUTOFFS = {
-  xlsr: { consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'sheva-nach': -2.5, said: 0.6, some: 0.1, mumbled: 0.35, skipped: -35 },
-  zipa: { consonant: -1, vowel: -2.5, 'vowel-ou': -2, 'sheva-nach': -1.5, said: 0.6, some: 0.1, mumbled: 0.6, skipped: -35 },
+  xlsr: { consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'sheva-nach': -2.5, said: 0.6, some: 0.1, mumbled: 0.35, skipped: -35, unclear: -5, different: 0.9 },
+  zipa: { consonant: -1, vowel: -2.5, 'vowel-ou': -2, 'sheva-nach': -1.5, said: 0.6, some: 0.1, mumbled: 0.6, skipped: -35, unclear: -5, different: 0.9 },
 }
 export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr']
 
@@ -394,23 +485,39 @@ export const isFlagged = s => s.kind === 'word' || (s.kind === 'sheva-na' ? s.pa
 //   sheva-nach  silent vs a vowel added after the letter
 //   word        a word left out (then none of its sounds are scored)
 export function scoreContrasts(post, units, base = align(post, units)) {
-  const swap = (i, change) => align(post, units.map((x, j) => j === i ? { ...x, ...change } : x))
   const out = []
-  // A skipped word: the verse fits far better without it. Its sounds aren't
-  // graded (forced alignment would squeeze it into the audio anyway).
-  const skipped = new Set()
-  const words = [...new Set(units.map(u => u.wi))]
-  if (words.length > 1) {
-    for (const w of words) {
-      const llr = base.score - align(post, units.filter(u => u.wi !== w)).score
-      if (llr < FLAG_BELOW.skipped) {
-        skipped.add(w)
-        out.push({ i: units.findIndex(u => u.wi === w), letter: '', word: units.find(u => u.wi === w).word, kind: 'word', test: 'skipped', expected: 'said', partner: 'left out', llr })
-      }
+  // Words first. A skipped word: the verse fits far better without it. It's
+  // taken out (one at a time, worst first) before anything else is scored, so
+  // its sounds aren't squeezed into its neighbours. Then a word that still fits
+  // much worse than junk doesn't sound like itself: a different word, or too
+  // unclear to grade. Neither has its sounds graded.
+  const wordsOf = us => [...new Set(us.filter(u => u.kind !== 'j').map(u => u.wi))]
+  const without = (us, w) => us.filter(u => u.kind === 'j' || u.wi !== w)
+  const skipped = new Set(), unclear = new Set()
+  if (wordsOf(units).length > 1) {
+    for (;;) {
+      const score = align(post, units).score
+      const worst = wordsOf(units).map(w => [w, score - align(post, without(units, w)).score]).sort((a, b) => a[1] - b[1])[0]
+      if (!worst || worst[1] >= FLAG_BELOW.skipped || wordsOf(units).length < 2) break
+      skipped.add(worst[0])
+      out.push({ i: -1, letter: '', word: units.find(u => u.wi === worst[0]).word, kind: 'word', test: 'skipped', expected: 'said', partner: 'left out', llr: worst[1] })
+      units = without(units, worst[0])
+    }
+    base = align(post, units)
+    for (const w of wordsOf(units)) {
+      const llr = base.score - align(post, without(units, w)).score
+      if (llr >= FLAG_BELOW.unclear) continue
+      const heard = heardInstead(post, units, w)
+      const differs = soundDistance(units.filter(u => u.wi === w && u.kind !== 'j' && u.kind !== 'g'), heard)
+      const test = heard.length < 2 ? 'unclear' : differs >= FLAG_BELOW.different ? 'wrong word' : null
+      if (!test) continue
+      unclear.add(w)
+      out.push({ i: -1, letter: '', word: units.find(u => u.wi === w).word, kind: 'word', test, expected: 'said', partner: heard.join(''), llr })
     }
   }
+  const swap = (i, change) => align(post, units.map((x, j) => j === i ? { ...x, ...change } : x))
   units.forEach((u, i) => {
-    if (skipped.has(u.wi)) return
+    if (u.kind === 'j' || unclear.has(u.wi)) return
     const at = { i, letter: u.letter, word: u.word, span: base.spans[i] }
     if (u.test) {
       const partner = u.test === 'sav' ? 't' : PARTNER[u.sound]

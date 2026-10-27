@@ -32,7 +32,7 @@ const targets = rows.filter(x => x.target), others = rows.filter(x => !x.target)
 for (const kind of ['word', 'consonant', 'vowel', 'vowel-ou', 'sheva-na', 'sheva-nach']) {
   const t = targets.filter(x => x.kind === kind), o = others.filter(x => x.kind === kind)
   if (!t.length && !o.length) continue
-  const cut = kind === 'word' ? FLAG_BELOW.skipped : FLAG_BELOW[kind]
+  const cut = kind === 'word' ? Infinity : FLAG_BELOW[kind]
   if (kind === 'sheva-na') {
     const bad = x => x.partner !== 'said'
     console.log(`\n== sheva-na: planned mistakes caught ${t.filter(bad).length}/${t.length}; correct readings flagged ${o.filter(bad).length}/${o.length}`)

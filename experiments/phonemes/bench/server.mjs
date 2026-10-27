@@ -44,6 +44,21 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/state') {
       return send(res, 200, { groups, latestRound, items: items.map(i => ({ ...i, text: textOf(i) })), results })
     }
+    // A plain page with a player per take: /listen?keys=<result key>,<result key>
+    if (req.method === 'GET' && url.pathname === '/listen') {
+      const keys = (url.searchParams.get('keys') ?? '').split(',').filter(k => results[k])
+      const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+      const rows = keys.map(k => {
+        const r = results[k], [id, kind, reader] = k.split('__'), item = items.find(i => i.id === id)
+        return `<div class="take"><b>${esc(id)}</b> · ${kind === 'right' ? 'as written' : 'mistake'}${reader ? ` · ${esc(reader)}` : ''}<div class="say">${esc(item?.[kind] ?? '')}</div>` +
+          `<audio controls preload="auto" src="/audio?file=${encodeURIComponent(r.file)}"></audio>` +
+          `<div class="flags">${r.flags.length ? r.flags.map(f => esc(`${f.word}: ${f.kind === 'consonant' ? f.letter : f.test}${f.partner ? ` (heard ${f.partner})` : ''}`)).join(' · ') : 'no flags'}</div></div>`
+      }).join('')
+      return send(res, 200, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Listen</title>
+<style>:root{--bg:#fafaf8;--ink:#1d1d1b;--muted:#6b6b66;--line:#e4e2dc}@media (prefers-color-scheme:dark){:root{--bg:#161615;--ink:#ecebe7;--muted:#a09f99;--line:#34332f}}
+body{margin:0;padding:16px;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif;max-width:720px}.take{border-bottom:1px solid var(--line);padding:12px 0}.say{color:var(--muted);font-size:14px}audio{width:100%;margin:6px 0}.flags{font-size:13px;color:var(--muted)}</style>
+</head><body><h1 style="font-size:18px">Listen</h1>${rows || '<p>No takes found.</p>'}</body></html>`, 'text/html; charset=utf-8')
+    }
     if (req.method === 'GET' && url.pathname === '/audio') {
       const name = url.searchParams.get('file') ?? ''
       if (!/^[\w.-]+\.wav$/.test(name)) return send(res, 400, { error: 'bad file' })

@@ -827,7 +827,7 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
 //   one of the scorer's checks — consonant, letter (partner: the sound heard),
 //   letter-missing,
 //   vowel, vowel-ou (partner: the vowel heard), vowel-missing, sheva-na
-//   (partner: 'short' or 'left out'), sheva-nach, end-vowel (heard: the vowel
+//   (partner: 'short', 'left out', or 'another vowel', heard), sheva-nach, end-vowel (heard: the vowel
 //   added), syllable (left out), order (patach genuvah after its letter),
 //   ending (־ָיו said "-ai-yoo") — or word (partner: what was heard instead)
 export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
@@ -868,6 +868,9 @@ export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
         add(buildMismatchNote({ ...m, status: 'mismatch', heardConsonant: f.partner, consonantMatched: false }, tradition), { consonant: false })
       } else if (f.kind === 'vowel' || f.kind === 'vowel-ou') {
         add(syllableNote({ ...m, status: 'vowel-mismatch', heardVowel: f.partner, vowelMatched: false }, tradition, shevaMode), { vowel: false })
+      } else if (f.kind === 'sheva-na' && f.partner === 'another vowel') {
+        // a full vowel for it ("lo" for לְךָ, the next syllable left out)
+        add(syllableNote({ ...m, status: 'vowel-mismatch', heardVowel: heardVowel(f.heard), vowelMatched: false }, tradition, shevaMode), { vowel: false })
       } else if (f.kind === 'vowel-missing' && here.some(g => g.kind === 'vowel' || g.kind === 'vowel-ou')) {
         // the vowel was heard as another one: that note says it
       } else if (f.kind === 'vowel-missing' || (f.kind === 'sheva-na' && f.partner === 'left out')) {

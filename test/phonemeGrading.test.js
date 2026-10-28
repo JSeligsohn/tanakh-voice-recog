@@ -53,8 +53,18 @@ test('a word that sounds like another word: all its sounds wrong', () => {
   assert.ok(words[0].phonemes.every(p => p.breakdown.vowel?.correct !== true && p.breakdown.consonant?.correct !== true))
 })
 
-test('a letter left out, its vowel still said ("lo" for לְךָ)', () => {
+test('a letter left out, its vowel still said ("le-a" for לְךָ)', () => {
   const { words } = grade('לְךָ', [{ wi: 0, atomIndex: 1, kind: 'letter-missing', partner: 'left out' }])
   assert.match(notesOf(words[0])[0], /"kh" of ךָ wasn't heard — only its vowel/)
   assert.equal(words[0].phonemes[1].breakdown.consonant.correct, false)
+})
+
+test('a syllable left out, its vowel said for the sheva before ("lo" for לְךָ)', () => {
+  const { words } = grade('לְךָ', [
+    { wi: 0, atomIndex: 0, kind: 'sheva-na', partner: 'another vowel', heard: 'o' },
+    { wi: 0, atomIndex: 1, kind: 'syllable', partner: 'left out' },
+  ])
+  const [first, second] = notesOf(words[0])
+  assert.match(first, /Sheva na is .* you said "oh"/)
+  assert.match(second, /Skipped ךָ/)
 })

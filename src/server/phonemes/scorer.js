@@ -655,7 +655,12 @@ export function scoreContrasts(post, units, base = align(post, units)) {
     const at = { i, wi: u.wi, atomIndex: u.atomIndex, letter: u.letter, word: u.word, span: base.spans[i] }
     const partner = u.test && (u.test === 'sav' ? 't' : PARTNER[u.sound])
     if (u.test) {
-      out.push({ ...at, kind: 'consonant', test: u.test, expected: u.sound, partner, llr: base.score - swap(i, { tokens: CONSONANT[partner] }).score })
+      // a tav with a strong release is heard "t s" ("mo-la-de-TSE-cha"): still
+      // a "t", where an "s" for it has no stop at all
+      const said = u.test === 'tav'
+        ? Math.max(base.score, replace(i, 1, u, { kind: 'g', tokens: CONSONANT.s, word: u.word, wi: u.wi, atomIndex: u.atomIndex, optional: true }).score)
+        : base.score
+      out.push({ ...at, kind: 'consonant', test: u.test, expected: u.sound, partner, llr: said - swap(i, { tokens: CONSONANT[partner] }).score })
     }
     if (u.kind === 'c' && CLEAR_LETTERS.has(u.sound)) {
       // a letter left out, its vowel still said ("lo" for לְךָ: no "ch"). Only
@@ -736,6 +741,21 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       out.push({ ...at, kind: 'sheva-nach', test: 'sheva-nach', expected: 'silent', partner: 'a vowel', llr: base.score - added.score, heardAs: vowelQuality(post, added.spans[i + 1]) })
     }
   })
+  // A letter left out with a vowel there that isn't its own: the whole
+  // syllable is gone, and the vowel belongs to the letter before ("lo" for
+  // לְךָ: the "o" is the ל's, said for its sheva; ךָ, "kh" and "ah", is left
+  // out). With its own vowel ("le-a"), only the letter is missing.
+  for (const f of out.filter(f => f.kind === 'letter-missing' && isFlagged(f))) {
+    const v = units[f.i + 1]
+    if (v?.kind !== 'v' || v.wi !== f.wi || v.atomIndex !== f.atomIndex || !v.accepted) continue
+    const heard = vowelQuality(post, base.spans[f.i + 1])
+    if (!heard || heard.class === 'schwa' || v.accepted.includes(heard.class)) continue
+    const mine = g => g.wi === f.wi && g.atomIndex === f.atomIndex
+    out.splice(0, out.length, ...out.filter(g => !(mine(g) && ['letter-missing', 'vowel', 'vowel-missing', 'vowel-ou'].includes(g.kind))))
+    out.push({ i: -1, wi: f.wi, atomIndex: f.atomIndex, letter: f.letter, word: f.word, kind: 'syllable', test: 'syllable left out', expected: `${units[f.i].sound}${v.sound}`, partner: 'left out', llr: f.llr })
+    const sheva = out.find(g => g.kind === 'sheva-na' && g.i === f.i - 1)
+    if (sheva) Object.assign(sheva, { partner: heard.class === 'e' ? 'said' : 'another vowel', heardAs: heard })
+  }
   return out
 }
 

@@ -825,7 +825,8 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
 // with the same notes, so the app shows both graders' results alike.
 //   findings: [{ atomIndex, kind, partner, heard }] for this word, where kind is
 //   one of the scorer's checks — consonant, letter (partner: the sound heard),
-//   letter-missing,
+//   letter-missing, letter-any (partner: the sound heard), swapped (letter2,
+//   atomIndex2: the letter it traded places with),
 //   vowel, vowel-ou (partner: the vowel heard), vowel-missing, sheva-na
 //   (partner: 'short', 'left out', or 'another vowel', heard), sheva-nach, end-vowel (heard: the vowel
 //   added), syllable (left out), order (patach genuvah after its letter),
@@ -851,6 +852,8 @@ export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
   const heardVowel = v => (v === 'schwa' ? 'e' : v ?? '')
   const graded = syllables.map((syl, k) => {
     const here = findings.filter(f => f.atomIndex === syl.atomIndex && f.kind !== 'word')
+    // the second letter of a swapped pair: wrong, its note on the first
+    const swappedIn = findings.some(f => f.kind === 'swapped' && f.atomIndex2 === syl.atomIndex)
     const m = { ...syl, consonantMatched: true, vowelMatched: true }
     const parts = []
     let consonantRight = true, vowelRight = true
@@ -864,7 +867,12 @@ export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
         add(skippedNote({ ...m, status: 'missing' }, tradition), { consonant: false, vowel: false })
       } else if (f.kind === 'letter-missing') {
         add(buildMismatchNote({ ...m, status: 'mismatch', heardConsonant: '', consonantMatched: false }, tradition), { consonant: false })
-      } else if (f.kind === 'consonant' || f.kind === 'letter') {
+      } else if (f.kind === 'swapped') {
+        // "DA-gol" for גָּדוֹל: one slip, both letters wrong
+        const [first, second] = f.expected.split('…').map(consonantSay)
+        const note = `${f.letter} and ${f.letter2} swapped places — it's "${first}" then "${second}", and you said "${second}" then "${first}".`
+        add({ note, problems: [{ kind: 'out-of-order', count: 1, text: note }] }, { consonant: false })
+      } else if (f.kind === 'consonant' || f.kind === 'letter' || f.kind === 'letter-any') {
         add(buildMismatchNote({ ...m, status: 'mismatch', heardConsonant: f.partner, consonantMatched: false }, tradition), { consonant: false })
       } else if (f.kind === 'vowel' || f.kind === 'vowel-ou') {
         add(syllableNote({ ...m, status: 'vowel-mismatch', heardVowel: f.partner, vowelMatched: false }, tradition, shevaMode), { vowel: false })
@@ -903,7 +911,7 @@ export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
       phoneme: syl.display,
       note: parts.map(p => p.note).filter(Boolean).join(' '),
       problems: parts.flatMap(p => p.problems),
-      breakdown: makeBreakdown(syl, consonantRight, vowelRight, tradition),
+      breakdown: makeBreakdown(syl, consonantRight && !swappedIn, vowelRight, tradition),
     }
   })
 

@@ -288,3 +288,21 @@ attempts on the Compare page:
 - **On the testers' attempts**, the only new flag is a real one: "mimoladekh"
   for וּמִמּוֹלַדְתְּךָ, flagged once as "te" left out. Before, it got three
   flags.
+
+## Every-sound letters, swapped letters, and a sheva said as a full vowel (2026-10-28)
+
+These checks came from a tester's take with "le-BOY" (לְגוֹי), "DA-gol" (גָּדוֹל) and "bee-RA-cha" (בְּרָכָה). All are tuned for ZIPA only (xlsr has no cutoffs, so they never flag there).
+
+- **letter-any:** each letter is scored against every other sound. Three exceptions:
+  - ה and י are left out, because the model barely hears them in fluent reading.
+  - A letter isn't scored against its voiced or voiceless twin (the ב of וְאָהַבְתָּ is said "f" before the ת).
+  - m, n and l aren't scored against each other.
+
+  At −7 it flags 2 of 1,459 correct letters on the bench (a ד in וְהִתְקַדִּשְׁתֶּם, the פ of פֶּה). It catches every real slip that isn't a partner swap, for example טוֹבָה with "p" and בָּרוּךְ with "z". At −4 it would flag 41. When a look-alike or partner check already flags the letter, this flag is dropped.
+- **swapped:** a letter and the next one in its word, with their sounds traded. "DA-gol" scores −14.8. No correct reading on the bench is below −4.8 (cutoff −5). When it fires, the single-letter flags on both letters are dropped.
+- **Sheva na said as a full vowel:**
+  - Length doesn't separate it. A correct sheva na spans about as long as a full vowel in the alignment (median 0.86 of one).
+  - Quality does: flag one heard at least 80% as i, o, u or a. "bee-racha" is 95% i.
+  - The exceptions: after ש (the "sh" colours a correct sheva toward i in 8 שְׁמַע takes), right before a vowel (וְאָהַבְתָּ is heard as "vi-a"), and an i before a yod.
+  - It flags 0 correct shevas on the bench. This rests on few examples, so it's the least tested of the three.
+- **Cost:** the checks take about 1.5× as long (0.8 s instead of 0.5 s for a 17 s take on a laptop).

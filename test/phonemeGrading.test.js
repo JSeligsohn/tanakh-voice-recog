@@ -68,3 +68,21 @@ test('a syllable left out, its vowel said for the sheva before ("lo" for לְך�
   assert.match(first, /Sheva na is .* you said "oh"/)
   assert.match(second, /Skipped ךָ/)
 })
+
+test('two letters swapped ("da-gol" for גָּדוֹל): one mistake, both letters wrong', () => {
+  const { words } = grade('גָּדוֹל', [{ wi: 0, atomIndex: 0, kind: 'swapped', letter: 'ג', letter2: 'ד', atomIndex2: 1, expected: 'g…d', partner: 'd…g' }])
+  assert.match(notesOf(words[0])[0], /ג and ד swapped places — it's "g" then "d", and you said "d" then "g"/)
+  assert.equal(words[0].phonemes[0].breakdown.consonant.correct, false)
+  assert.equal(words[0].phonemes[1].breakdown.consonant.correct, false)
+  assert.equal(words[0].phonemes.flatMap(p => p.problems).length, 1)
+})
+
+test('a letter said as any other sound ("le-boy" for לְגוֹי)', () => {
+  const { words } = grade('לְגוֹי', [{ wi: 0, atomIndex: 1, kind: 'letter-any', partner: 'b' }])
+  assert.match(notesOf(words[0])[0], /ג \(gimel\) is "g" as in "get" — you said "b" as in "boy"/)
+})
+
+test('a sheva na said as a full other vowel ("bee-racha" for בְּרָכָה)', () => {
+  const { words } = grade('בְּרָכָה', [{ wi: 0, atomIndex: 0, kind: 'sheva-na', partner: 'another vowel', heard: 'i' }])
+  assert.match(notesOf(words[0])[0], /like the "be" in "believe" — you said "ee" as in "see"/)
+})

@@ -251,6 +251,15 @@ const CLEAR_LETTERS = new Set(['ch', 'sh', 's', 't', 'k', 'b', 'g', 'f', 'n', 't
 const CONSONANT_TOKENS = new Set(Object.values(CONSONANT).flat().filter(t => !VOWELS.includes(t)))
 const letterRivals = (u, partner) => (LOOKS_LIKE[u.letter] ?? []).filter(c => c !== u.sound && c !== partner && !u.alsoSounds.includes(c))
 const rivalTokens = (u, classes) => [...new Set(classes.flatMap(c => CONSONANT[c]))].filter(t => CONSONANT_TOKENS.has(t) && !u.tokens.includes(t))
+// The every-sound letter check leaves out ה and י, which the model barely
+// hears in fluent reading, and doesn't score a letter against the sounds the
+// model mixes it up with in correct readings: its voiced or voiceless twin
+// (the ב of וְאָהַבְתָּ is an "f" before the ת), and m, n, l for each other
+const ANY_SKIP = new Set(['h', 'y'])
+const ANY_CLOSE = {
+  b: ['p'], p: ['b'], v: ['f'], f: ['v'], d: ['t'], t: ['d'], g: ['k'], k: ['g'], z: ['s'], s: ['z'],
+  m: ['n'], n: ['m', 'l'], l: ['n'],
+}
 // The partner each tested sound is scored against
 export const PARTNER = { sh: 's', s: 'sh', b: 'v', v: 'b', k: 'ch', ch: 'k', p: 'f', f: 'p', t: 's' }
 
@@ -548,7 +557,7 @@ function soundDistance(units, heard) {
 //   takes that came out ə, flagged the user's natural verse readings.)
 const CUTOFFS = {
   xlsr: { 'letter-missing': -4, letter: -3, syllable: -6.5, order: -1, 'end-vowel': 0.6, ending: -1, consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
-  zipa: { 'letter-missing': -4, letter: -3, syllable: -4.8, order: -1, 'end-vowel': 0.6, ending: -1, consonant: -1, vowel: -2.5, 'vowel-ou': -1, 'vowel-missing': -2.7, 'sheva-nach': -1.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -17, unclear: -5, different: 0.9 },
+  zipa: { 'letter-missing': -4, letter: -3, 'letter-any': -7, swapped: -5, shevaFull: 0.8, syllable: -4.8, order: -1, 'end-vowel': 0.6, ending: -1, consonant: -1, vowel: -2.5, 'vowel-ou': -1, 'vowel-missing': -2.7, 'sheva-nach': -1.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -17, unclear: -5, different: 0.9 },
 }
 export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr']
 
@@ -567,6 +576,9 @@ export const isFlagged = s => ['word', 'syllable'].includes(s.kind) || (s.kind =
 // likelihood ratio over the best timing for each. Negative = the alternative
 // fits better, i.e. the reader likely said it.
 //   consonant   the written sound vs its partner (sh/s, b/v, k/kh, p/f, t/s)
+//   letter      a letter vs the letters it looks like; letter-any vs every
+//               other sound but its close ones (ANY_CLOSE)
+//   swapped     a letter and the next one in the word vs the two traded
 //   vowel       the accepted vowels vs all the others together
 //   vowel-ou    o vs u
 //   vowel-missing  the final kamatz of ־ךָ said vs left out
@@ -678,6 +690,22 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       const heard = llr < 0 ? rivals.map(c => [c, swap(i, { tokens: rivalTokens(u, [c]) }).score]).sort((a, b) => b[1] - a[1])[0][0] : rivals.join('/')
       out.push({ ...at, kind: 'letter', test: u.letter, expected: u.sound, partner: heard, llr })
     }
+    if (u.kind === 'c' && !ANY_SKIP.has(u.sound)) {
+      // every letter against every other sound (a ג a student doesn't know,
+      // said "r" or "b": "le-ROY", "le-BOY")
+      const own = new Set([...u.tokens, ...[partner, ...(ANY_CLOSE[u.sound] ?? []), ...u.alsoSounds].filter(Boolean).flatMap(c => CONSONANT[c] ?? [])])
+      const others = [...CONSONANT_TOKENS].filter(t => !own.has(t))
+      const llr = base.score - swap(i, { tokens: others }).score
+      const classes = Object.keys(CONSONANT).filter(c => c !== u.sound && CONSONANT[c].some(t => others.includes(t)))
+      const heard = llr < 0 ? classes.map(c => [c, swap(i, { tokens: CONSONANT[c].filter(t => others.includes(t)) }).score]).sort((a, b) => b[1] - a[1])[0][0] : 'any'
+      out.push({ ...at, kind: 'letter-any', test: u.letter, expected: u.sound, partner: heard, llr })
+      // two letters traded places ("DA-gol" for גָּדוֹל)
+      const j = units.findIndex((x, k) => k > i && x.kind === 'c')
+      if (j > 0 && units[j].wi === u.wi && units[j].sound !== u.sound && units.slice(i + 1, j).every(x => x.kind !== 'j')) {
+        const traded = align(post, units.map((x, k) => k === i ? { ...x, tokens: units[j].tokens } : k === j ? { ...x, tokens: u.tokens } : x))
+        out.push({ ...at, j, atomIndex2: units[j].atomIndex, letter2: units[j].letter, kind: 'swapped', test: `${u.letter}${units[j].letter}`, expected: `${u.sound}…${units[j].sound}`, partner: `${units[j].sound}…${u.sound}`, llr: base.score - traded.score })
+      }
+    }
     if (u.genuvah && units[i + 1]?.kind === 'c') {
       // patach genuvah: the "a" before the letter (רוּחַ "ROO-ach", not "ROO-cha")
       const llr = base.score - replace(i, 2, units[i + 1], u).score
@@ -714,7 +742,15 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       let trace = 0
       for (let t = from; t < to; t++) trace = Math.max(trace, vowelMass(post, t))
       const llr = said - without.score
-      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(trace, u.canCluster, u.releasedStop), llr, trace, heardAs })
+      let verdict = shevaNaVerdict(trace, u.canCluster, u.releasedStop)
+      // said, but as a full vowel of another kind ("bee-RA-cha" for בְּרָכָה).
+      // Not after ש, whose "sh" the model hears colouring a correct sheva
+      // toward "i" (שְׁמַע), nor right before a vowel (וְאָהַבְתָּ "ve-a-"), nor
+      // an "i" before a yod (בְּיוֹם "bi-yom" is how it's said)
+      const next = units.slice(i + 1).find(x => x.kind !== 'j')
+      if (verdict === 'said' && heardAs && FULL.includes(heardAs.class) && heardAs.class !== 'e' && heardAs.share >= FLAG_BELOW.shevaFull &&
+          u.letter !== 'ש' && next?.kind === 'c' && next.sound !== 'h' && !(heardAs.class === 'i' && next.sound === 'y')) verdict = 'another vowel'
+      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: verdict, llr, trace, heardAs })
     } else if (u.vowelTest && u.rivals.length) {
       const alt = swap(i, { tokens: u.rivals.flatMap(v => VOWEL_CLASS[v]) })
       const llr = base.score - alt.score
@@ -741,6 +777,16 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       out.push({ ...at, kind: 'sheva-nach', test: 'sheva-nach', expected: 'silent', partner: 'a vowel', llr: base.score - added.score, heardAs: vowelQuality(post, added.spans[i + 1]) })
     }
   })
+  // Two letters swapped are one mistake, not two wrong letters; and a letter
+  // flagged by a narrower check needs no every-sound flag too
+  const drop = new Set()
+  for (const f of out.filter(f => f.kind === 'swapped' && isFlagged(f))) {
+    for (const g of out) if ((g.i === f.i || g.i === f.j) && ['consonant', 'letter', 'letter-any', 'letter-missing'].includes(g.kind)) drop.add(g)
+  }
+  for (const f of out.filter(f => f.kind === 'letter-any' && isFlagged(f))) {
+    if (out.some(g => g.i === f.i && g !== f && ['consonant', 'letter', 'letter-missing'].includes(g.kind) && isFlagged(g))) drop.add(f)
+  }
+  if (drop.size) out.splice(0, out.length, ...out.filter(g => !drop.has(g)))
   // A letter left out with a vowel there that isn't its own: the whole
   // syllable is gone, and the vowel belongs to the letter before ("lo" for
   // לְךָ: the "o" is the ל's, said for its sheva; ךָ, "kh" and "ah", is left
@@ -777,6 +823,7 @@ export async function scoreRecording(samples, referenceText, settings = {}) {
     model: MODEL_NAME,
     flags: flags.map(f => ({
       wi: f.wi, atomIndex: f.atomIndex ?? null, word: f.word, letter: f.letter, kind: f.kind, test: f.test,
+      ...(f.kind === 'swapped' ? { atomIndex2: f.atomIndex2, letter2: f.letter2 } : {}),
       expected: f.expected, partner: f.partner, heard: f.heardAs?.class ?? null, score: +f.llr.toFixed(2),
     })),
     heard: freeDecode(post),

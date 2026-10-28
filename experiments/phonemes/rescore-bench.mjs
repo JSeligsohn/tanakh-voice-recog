@@ -32,7 +32,7 @@ for (const [key, r] of Object.entries(results)) {
 }
 const show = x => `${String(x.llr).padStart(6)}  ${x.key.padEnd(24)} ${x.word} ${x.kind} ${x.test} ${x.expected}→${x.partner}${x.trace != null ? ` (trace ${x.trace.toFixed(2)})` : ''}`
 const targets = rows.filter(x => x.target), others = rows.filter(x => !x.target)
-for (const kind of ['word', 'syllable', 'letter-missing', 'letter', 'order', 'end-vowel', 'ending', 'consonant', 'vowel', 'vowel-ou', 'vowel-missing', 'sheva-na', 'sheva-nach']) {
+for (const kind of ['word', 'syllable', 'letter-missing', 'letter', 'letter-any', 'swapped', 'order', 'end-vowel', 'ending', 'consonant', 'vowel', 'vowel-ou', 'vowel-missing', 'sheva-na', 'sheva-nach']) {
   const t = targets.filter(x => x.kind === kind), o = others.filter(x => x.kind === kind)
   if (!t.length && !o.length) continue
   const cut = ['word', 'syllable'].includes(kind) ? Infinity : FLAG_BELOW[kind]

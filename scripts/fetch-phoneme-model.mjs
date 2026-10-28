@@ -5,8 +5,9 @@
 // the ONNX export at huggingface.co/anyspeech/zipa-small-crctc-500k is CC BY 4.0.
 //
 // On Vercel it also deletes onnxruntime's builds for other platforms (macOS,
-// Windows, Linux ARM: 250 MB of its 299), which would otherwise be bundled
-// with the function and take it over Vercel's 250 MB limit.
+// Windows, Linux ARM: 250 MB of its 299) and the GPU add-ons (CUDA, TensorRT)
+// its install step downloads there, which would otherwise be bundled with the
+// function and take it over Vercel's 250 MB limit.
 
 import { mkdir, stat, writeFile, rename, rm, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -18,8 +19,10 @@ const DIR = join(ROOT, 'models/zipa-s')
 if (process.env.VERCEL) {
   const bin = join(ROOT, 'node_modules/onnxruntime-node/bin/napi-v6')
   for (const other of ['darwin', 'win32', 'linux/arm64']) await rm(join(bin, other), { recursive: true, force: true })
-  const left = await readdir(bin, { recursive: true }).catch(err => [`(${err.message})`])
-  console.log(`[phoneme model] removed onnxruntime builds for other platforms; left in ${bin}: ${left.join(', ')}`)
+  // and the GPU add-ons its install step downloads on Linux (Vercel has no GPU)
+  for (const gpu of ['cuda', 'tensorrt']) await rm(join(bin, `linux/x64/libonnxruntime_providers_${gpu}.so`), { force: true })
+  const left = await readdir(join(bin, 'linux/x64')).catch(err => [`(${err.message})`])
+  console.log(`[phoneme model] onnxruntime trimmed to linux/x64: ${left.join(', ')}`)
 }
 const FILES = { 'model.int8.onnx': 70_000_000, 'tokens.txt': 500 }
 

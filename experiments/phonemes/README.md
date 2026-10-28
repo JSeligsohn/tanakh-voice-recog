@@ -231,3 +231,55 @@ ear; one is the Gen 1:1 take that lost its opening.
   results much weaker; flags on ש in שְׁמַע/הַשֵּׁם are likely the lisp.
 
 Not yet covered: more readers, and a vowel model that can separate a/o.
+
+## Bench round 4 and the new checks, 2026-10-28 (adult)
+
+Round 4 recorded the mistake types no check covered yet. Built from it, each
+tuned on all 304 bench takes (rounds 1–4), then run unseen on the 9 tester
+attempts on the Compare page:
+
+| Check | Catches | Mistakes caught | Correct readings flagged |
+|---|---|---|---|
+| `letter` | a look-alike letter (ד/ר, ב/כ, ה/ח/ת, ו/ז/ן, ס/ם, ג/נ, ט/מ), ח said "h", צ said "z" | 9 of 10 (missed: one ח as "h", −1.8) | 4 of 1096 |
+| `syllable` | a syllable or prefix left out ("va-yish-ta-VOO", "sha-MA-yim") | 5 of 6 | 2 in fluent verses (plus 4 in takes cut off at the start) |
+| `order` | patach genuvah said after its letter ("ROO-cha") | 3 of 3 | 0 |
+| `end-vowel` | a vowel added under a final sheva ("A-ta" for אַתְּ, "LE-cheh" for לֵךְ) | 2 of 2 | 0 of 19 |
+| `ending` | ־ָיו said "-ai-yoo" | 2 of 2 | 0 |
+
+- **Letter:** each letter is tested only against the letters it looks like
+  and the English-speaker swaps. Testing it against every other consonant
+  flagged 73 correct sounds: the model often hears a quick ל, ר or י as
+  something else. Also left out:
+  - ך against ר: the model hears a correct "ch" as a throaty Israeli "r"
+    (a tester's מֵאַרְצְךָ).
+  - **צ said "s"**: the model hears a correct "tz" as "s" too, in 9 of 12
+    correct readings.
+- **ח and ה** are now told apart: ח no longer accepts a plain "h", and ה no
+  longer accepts the throaty ħ. A soft כ heard as "h" still passes.
+- **Syllable**, cutoff −6.5:
+  - A syllable counts as said if its vowel is there; a quiet letter doesn't
+    make it missing.
+  - Not judged where it runs into a vowel before it (א, ע, ה, a prefix וּ,
+    or a yod right after a vowel). There "ha-A-retz" is said "haaretz", and
+    one vowel is heard either way. So "A-retz" for לָאָרֶץ isn't caught.
+  - Taken out before anything else is scored, like a skipped word.
+- **End vowel:**
+  - Flagged when a full vowel (not a reduced "uh") of ≥ 0.6 is heard within
+    0.3 s of the word's last letter.
+  - Only on a written final sheva (ךְ, תְּ). On every last letter it flagged
+    11 correct takes, and the user listened to all of them. They were:
+    - background noise at the end of the children's takes
+    - an adult's full "m" released (קוּם, יוֹם), which sounds almost like "muh"
+
+    Those blips look just like the real "-a": one frame each, and no quieter.
+  - Not judged before a word starting with a vowel or ה.
+  - Comparing alignments missed it: the junk after the word soaked up the
+    added vowel cheaply.
+- **Final הּ (mappik)** isn't graded. It's a breath the model barely hears
+  (2–8% "h" when said, 0.3% when dropped), so a dropped one can't be told
+  from a quiet one.
+- **No change elsewhere:** the old checks' flags on correct readings went
+  from 12 to 11 (vowel) and 17 to 15 (sheva-na).
+- **On the testers' attempts**, the only new flag is a real one: "mimoladekh"
+  for וּמִמּוֹלַדְתְּךָ, flagged once as "te" left out. Before, it got three
+  flags.

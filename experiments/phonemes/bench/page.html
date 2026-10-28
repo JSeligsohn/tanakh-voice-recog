@@ -74,7 +74,7 @@ function resultHtml(item, kind, r) {
   }
   const missed = r.missed ?? []
   const parts = []
-  if (!item.flag.length) return `<div class="result ${r.ok ? 'ok' : 'bad'}">${r.ok ? '✓ No flags, as expected.' : `✗ Flagged: ${r.flags.map(flagText).join('; ')}.`}${heard}</div>`
+  if (!item.flag.length) return `<div class="result ${r.ok ? 'ok' : 'bad'}">${r.ok ? `✓ No flags, as expected.${item.ungraded ? ` ${esc(item.ungraded)}` : ''}` : `✗ Flagged: ${r.flags.map(flagText).join('; ')}.`}${heard}</div>`
   const wanted = item.flag.filter(w => !missed.some(m => m.word === w.word && m.letter === w.letter && m.vowel === w.vowel && m.problem === w.problem))
   if (wanted.length) parts.push(`caught ${wanted.map(target).join(', ')}`)
   if (missed.length) parts.push(`missed ${missed.map(target).join(', ')}`)
@@ -97,7 +97,7 @@ function render() {
         <div class="top"><div class="heb">${esc(i.text)}</div><span class="trad">${tradLabel(i.trad)}</span></div>
         ${kindsOf(i).map(kind => `
           <div class="take">
-            <span class="kind">${kind === 'right' ? 'As written' : i.flag.length ? 'Mistake' : 'Variation'}</span>
+            <span class="kind">${kind === 'right' ? 'As written' : i.flag.length ? 'Mistake' : i.ungraded ? 'Not graded' : 'Variation'}</span>
             <span class="say">${caps(i[kind])}</span>
             <button class="rec" data-id="${i.id}" data-kind="${kind}">${state.results[keyOf(i, kind)] ? 'Redo' : '● Record'}</button>
             ${resultHtml(i, kind, state.results[keyOf(i, kind)])}

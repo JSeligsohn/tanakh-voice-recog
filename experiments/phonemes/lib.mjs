@@ -200,6 +200,29 @@ const CONSONANT = {
 }
 // a model without a "ts" symbol (ZIPA) writes it t + s
 if (!CONSONANT.ts.length) CONSONANT.ts = set('t', 's')
+// ח is never a plain "h" (that's the mistake English speakers make), and ה is
+// never the throaty ħ; a soft כ heard as "h" still passes
+const LETTER_TOKENS = {
+  'ח': CONSONANT.ch.filter(t => !['h', 'ɦ'].includes(t)),
+  'ה': CONSONANT.h.filter(t => t !== 'ħ'),
+}
+// The letter check: each letter against the letters it looks like (ד ר ך,
+// ב כ, ה ח ת, ו ז ן, ס ם, ג נ, ט מ) and the sounds English speakers put in
+// its place (ח as "h", צ as "s" or "z"). Scoring against every other
+// consonant flagged too many correct readings: the model often hears a
+// quick ל, ר or י as something else. And not ך against ר: the model hears
+// a correct "ch" as a throaty Israeli "r" (a tester's מֵאַרְצְךָ).
+const LOOKS_LIKE = {
+  'ד': ['r'], 'ר': ['d'], 'ך': ['d'],
+  'ב': ['k', 'ch'], 'כ': ['b', 'v'], 'ה': ['ch'], 'ח': ['h', 't'], 'ת': ['ch'],
+  'ו': ['z', 'n'], 'ז': ['v', 'n'], 'ן': ['v', 'z'], 'ס': ['m'], 'ם': ['s'],
+  'ג': ['n'], 'נ': ['g'], 'ט': ['m'], 'מ': ['t'], 'צ': ['z'], 'ץ': ['z'],
+}
+// (צ said "s" can't be checked: the model hears a correct "tz" as "s" too,
+// in 9 of 12 correct readings on the bench)
+const CONSONANT_TOKENS = new Set(Object.values(CONSONANT).flat().filter(t => !VOWELS.includes(t)))
+const letterRivals = (u, partner) => (LOOKS_LIKE[u.letter] ?? []).filter(c => c !== u.sound && c !== partner && !u.alsoSounds.includes(c))
+const rivalTokens = (u, classes) => [...new Set(classes.flatMap(c => CONSONANT[c]))].filter(t => CONSONANT_TOKENS.has(t) && !u.tokens.includes(t))
 // The partner each tested sound is scored against
 export const PARTNER = { sh: 's', s: 'sh', b: 'v', v: 'b', k: 'ch', ch: 'k', p: 'f', f: 'p', t: 's' }
 
@@ -217,16 +240,26 @@ export function expectedUnits(text, settings = {}) {
     segments.forEach((seg, k) => {
       const a = seg.atom
       const c = seg.consonant
+      const last = k === segments.length - 1
       const consonantUnit = c && CONSONANT[c] && {
-        kind: 'c', sound: c, tokens: [...new Set([...CONSONANT[c], ...(seg.altConsonants ?? []).flatMap(k => CONSONANT[k] ?? [])])],
+        kind: 'c', sound: c, tokens: [...new Set([...(LETTER_TOKENS[a.letter] ?? CONSONANT[c]), ...(seg.altConsonants ?? []).flatMap(k => CONSONANT[k] ?? [])])],
+        alsoSounds: seg.altConsonants ?? [],
         word, wi, letter: a.letter, atomIndex: seg.atomIndex,
         test: testedLetter(a, c),
         nach: seg.shevaType === 'nach' && !a.isFinal,
+        // a written sheva on the last letter (אַתְּ, לֵךְ): "A-ta", "LE-cheh" read
+        // it as a vowel. Not on a last letter with no sheva (קוּם, גָּדוֹל): there
+        // the model hears a full "m" or "l" released ("koom-uh"), or background
+        // noise, as a vowel (11 correct bench takes, the user listened).
+        silentEnd: last && a.vowel === 'sheva' && !seg.vowel && !seg.patachGenuvah,
+        // ־ָיו is "av" (עָלָיו "a-LAV"), not "a-LAI-yoo"
+        avEnding: last && a.letter === 'ו' && c === 'v' && /\u05B8[\u0591-\u05AF\u05BD]*י[\u0591-\u05AF\u05BD]*ו[\u0591-\u05AF\u05BD]*$/.test(word.replace(/־$/, '')),
       }
       const where = { word, wi, letter: a.letter, atomIndex: seg.atomIndex }
       const vowelUnit = seg.vowel && vowelUnitFor(seg, where, segments[k + 1]?.consonant, segments[k - 1]?.shevaType === 'nach', fullVowels, k === segments.length - 1 || segments.slice(k + 1).every(x => !x.vowel))
       const glideTokens = seg.vowel && (a.yudAfter ? GLIDE.yud : GLIDE[a.vowel])
       const glide = glideTokens && { kind: 'g', tokens: glideTokens.filter(has), ...where, optional: true }
+      if (seg.patachGenuvah && vowelUnit) vowelUnit.genuvah = true
       const ordered = seg.patachGenuvah ? [vowelUnit, consonantUnit] : [consonantUnit, vowelUnit, glide]
       units.push(...ordered.filter(Boolean))
     })
@@ -250,6 +283,9 @@ function withJunk(units) {
 // was said too short), and not after a sheva nach (וּמִמּוֹלַדְתְּךָ): that
 // letter opens its own syllable whatever happens, and a hard t's release is
 // heard like a vowel, so it can be short but not left out.
+const STOPS = new Set(['b', 'p', 'k', 'g', 'd', 't'])
+// one-letter prefixes: ו "and", ה "the", ל "to", ב "in", כ "like", מ "from", ש "that"
+const PREFIX = new Set(['ו', 'ה', 'ל', 'ב', 'כ', 'מ', 'ש'])
 const CAN_LEAD = new Set(['b', 'v', 'p', 'f', 'k', 'ch', 'g', 'd', 't', 's', 'sh', 'z', 'ts'])
 const clusters = (c1, c2, afterNach) => !afterNach && CAN_LEAD.has(c1) && !!c2 && c1 !== c2
 
@@ -264,6 +300,9 @@ function vowelUnitFor(seg, where, nextConsonant, afterNach, fullVowels, lastVowe
     return {
       kind: 'v', sound: 'e', tokens: VOWELS, ...where, optional: true,
       vowelTest: seg.shevaType === 'na' ? 'sheva-na' : null, canCluster: clusters(seg.consonant, nextConsonant, afterNach),
+      // a stop released into ה, א or ע (תְהוֹם "te-hom"): the release is the
+      // sheva, so a small trace of vowel is enough
+      releasedStop: STOPS.has(seg.consonant) && (nextConsonant === 'h' || nextConsonant === ''),
     }
   }
   // A tzere before a written yod in a longer word (אֱלֹהֵינוּ): the model hears
@@ -405,6 +444,11 @@ export function align(post, units) {
 // Probability that frame t is some vowel
 const VOWEL_IDS = VOWELS.map(t => vocab[t])
 const vowelMass = ({ lp }, t) => VOWEL_IDS.reduce((sum, id) => sum + Math.exp(lp[t * V + id]), 0)
+// the same, counting only full vowels (not a reduced "uh")
+const FULL_IDS = FULL.flatMap(v => VOWEL_CLASS[v]).map(t => vocab[t])
+const fullVowelMass = ({ lp }, t) => FULL_IDS.reduce((sum, id) => sum + Math.exp(lp[t * V + id]), 0)
+// how far after a word's last letter an added vowel is looked for (0.3 s)
+const END_FRAMES = 15
 
 // A sheva na must be heard (shevas enforced). A short one often gets no spike
 // of its own but leaves a trace of vowel; with no trace at all, the letters
@@ -460,6 +504,8 @@ function soundDistance(units, heard) {
 //            this (vowel-missing: the compare takes' dropped ־ךָ endings −7.9 to
 //            −4.8; correctly said endings on the bench, 3 of 33 below −4)
 //   said:    a sheva na needs at least this much vowel trace to count as said
+//            (saidAfterStop: on a stop before ה/א/ע; the user's clear "te-hom"
+//            for תְהוֹם had 0.35)
 //   some:    below this trace, with letters that can cluster, it was left out
 //   skipped: a word whose verse fits this much better without it was left out
 //            (round 3: the two skipped words −47, read words down to −28;
@@ -473,8 +519,8 @@ function soundDistance(units, heard) {
 //   sheva na sounds. Flagging it as short, from three deliberate "left out"
 //   takes that came out ə, flagged the user's natural verse readings.)
 const CUTOFFS = {
-  xlsr: { consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
-  zipa: { consonant: -1, vowel: -2.5, 'vowel-ou': -2, 'vowel-missing': -4.5, 'sheva-nach': -1.5, said: 0.6, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
+  xlsr: { letter: -3, syllable: -6.5, order: -1, 'end-vowel': 0.6, ending: -1, consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
+  zipa: { letter: -3, syllable: -6.5, order: -1, 'end-vowel': 0.6, ending: -1, consonant: -1, vowel: -2.5, 'vowel-ou': -2, 'vowel-missing': -4.5, 'sheva-nach': -1.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
 }
 export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr']
 
@@ -482,11 +528,11 @@ export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr
 // of its own but leaves a trace of vowel; with no trace at all, the letters
 // ran together. The trace decides, not the alignment: in יְדֵי the model hears
 // "ye" as an "i" and gives it to the yod.
-function shevaNaVerdict(trace, canCluster) {
-  if (trace >= FLAG_BELOW.said) return 'said'
+function shevaNaVerdict(trace, canCluster, releasedStop) {
+  if (trace >= (releasedStop ? FLAG_BELOW.saidAfterStop : FLAG_BELOW.said)) return 'said'
   return trace >= FLAG_BELOW.some || !canCluster ? 'short' : 'left out'
 }
-export const isFlagged = s => s.kind === 'word' || (s.kind === 'sheva-na' ? s.partner !== 'said' : s.llr < FLAG_BELOW[s.kind])
+export const isFlagged = s => ['word', 'syllable'].includes(s.kind) || (s.kind === 'sheva-na' ? s.partner !== 'said' : s.kind === 'end-vowel' ? s.trace >= FLAG_BELOW['end-vowel'] : s.llr < FLAG_BELOW[s.kind])
 
 // Score each tested sound against what a reader might say instead. Each test
 // re-aligns the whole verse with one unit changed, so the comparison is a
@@ -530,13 +576,90 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       out.push({ i: -1, wi: w, letter: '', word: units.find(u => u.wi === w).word, kind: 'word', test, expected: 'said', partner: heard.join(''), llr })
     }
   }
+  // Then syllables: one left out ("sha-MA-yim" for הַשָּׁמַיִם, "va-yish-ta-VOO"
+  // for וַיִּשְׁתַּחֲווּ) fits far better without its sounds. Taken out the same
+  // way, worst first, so they aren't graded as wrong sounds.
+  const syllables = us => {
+    const keys = new Map()
+    for (const u of us) {
+      if (u.kind === 'j' || unclear.has(u.wi)) continue
+      const key = `${u.wi}:${u.atomIndex}`
+      if (!keys.has(key)) keys.set(key, { wi: u.wi, atomIndex: u.atomIndex, units: [] })
+      keys.get(key).units.push(u)
+    }
+    // syllables with a vowel (a letter alone at the end isn't one), in words
+    // with two or more
+    const all = [...keys.values()].filter(x => x.units.some(u => u.kind === 'v'))
+    return all.filter(x => all.filter(y => y.wi === x.wi).length > 1 && !mergesBack(us, x))
+  }
+  // A syllable with no real letter of its own (א, ע, ה, a ו "u", a yod between
+  // vowels) right after a vowel runs into it in fluent reading: "ha-A-retz"
+  // is said "haaretz", "ra-EL" "rael", "e-lo-KEI-nu ha-SHEM" "elokeinoshem".
+  // The model hears one vowel, so it can't tell either syllable from one left
+  // out. So "A-retz" for לָאָרֶץ isn't caught: "la-" and "a-" are one long
+  // "a" either way. (Judging "la-" by its ל instead caught it, but flagged
+  // three correct readings for each one caught.)
+  const mergesBack = (us, x) => {
+    const c = x.units.find(u => u.kind === 'c')
+    if (c && !['h', 'y'].includes(c.sound)) return false
+    const before = us.slice(0, us.indexOf(x.units[0])).findLast(u => u.kind !== 'j')
+    return !!before && ['v', 'g'].includes(before.kind)
+  }
+  const dropSyllable = (us, x) => us.filter(u => u.kind === 'j' || u.wi !== x.wi || u.atomIndex !== x.atomIndex)
+  // Said, as far as the evidence goes: its vowel there (a quiet ה or a soft
+  // final letter the model barely hears isn't a missing syllable); with only a
+  // sheva, its letter there
+  const keepSyllable = (us, x) => us.map(u => u.wi === x.wi && u.atomIndex === x.atomIndex && u.kind === 'c' && x.units.some(v => v.kind === 'v' && !v.optional) ? { ...u, optional: true } : u)
+  for (;;) {
+    const worst = syllables(units).map(x => [x, align(post, keepSyllable(units, x)).score - align(post, dropSyllable(units, x)).score]).sort((a, b) => a[1] - b[1])[0]
+    if (!worst || worst[1] >= FLAG_BELOW.syllable) break
+    const [x, llr] = worst, first = x.units[0]
+    const isPrefix = x.atomIndex === Math.min(...units.filter(u => u.wi === x.wi && u.kind !== 'j').map(u => u.atomIndex)) && PREFIX.has(first.letter)
+    out.push({ i: -1, wi: x.wi, letter: first.letter, word: first.word, kind: 'syllable', test: isPrefix ? 'prefix left out' : 'syllable left out', expected: x.units.filter(u => u.kind !== 'g').map(u => u.sound).join(''), partner: 'left out', llr })
+    units = dropSyllable(units, x)
+  }
+  base = align(post, units)
+
   const swap = (i, change) => align(post, units.map((x, j) => j === i ? { ...x, ...change } : x))
+  const replace = (i, n, ...instead) => align(post, [...units.slice(0, i), ...instead, ...units.slice(i + n)])
   units.forEach((u, i) => {
     if (u.kind === 'j' || unclear.has(u.wi)) return
     const at = { i, wi: u.wi, letter: u.letter, word: u.word, span: base.spans[i] }
+    const partner = u.test && (u.test === 'sav' ? 't' : PARTNER[u.sound])
     if (u.test) {
-      const partner = u.test === 'sav' ? 't' : PARTNER[u.sound]
       out.push({ ...at, kind: 'consonant', test: u.test, expected: u.sound, partner, llr: base.score - swap(i, { tokens: CONSONANT[partner] }).score })
+    }
+    if (u.kind === 'c' && letterRivals(u, partner).length) {
+      // every letter against all the others (a look-alike letter: ד for ר,
+      // ס for ם; ח said "h", צ said "s" or "z")
+      const rivals = letterRivals(u, partner)
+      const llr = base.score - swap(i, { tokens: rivalTokens(u, rivals) }).score
+      const heard = llr < 0 ? rivals.map(c => [c, swap(i, { tokens: rivalTokens(u, [c]) }).score]).sort((a, b) => b[1] - a[1])[0][0] : rivals.join('/')
+      out.push({ ...at, kind: 'letter', test: u.letter, expected: u.sound, partner: heard, llr })
+    }
+    if (u.genuvah && units[i + 1]?.kind === 'c') {
+      // patach genuvah: the "a" before the letter (רוּחַ "ROO-ach", not "ROO-cha")
+      const llr = base.score - replace(i, 2, units[i + 1], u).score
+      out.push({ ...at, kind: 'order', test: 'patach genuvah', expected: `${u.sound}${units[i + 1].sound}`, partner: `${units[i + 1].sound}${u.sound}`, llr })
+    }
+    const nextWord = units.slice(i + 1).find(x => x.kind !== 'j')
+    // (not before a word starting with a vowel or ה: it runs straight on,
+    // "el ha-A-retz a-SHER", so its vowel can't be told from one added)
+    if (u.silentEnd && !(nextWord && (nextWord.kind === 'v' || nextWord.sound === 'h'))) {
+      // a full vowel added after the last letter ("A-ta" for אַתְּ); a reduced
+      // "uh" release doesn't count
+      const llr = base.score - replace(i + 1, 0, { kind: 'v', tokens: FULL.flatMap(v => VOWEL_CLASS[v]), word: u.word }).score
+      const from = base.spans[i]?.[1] ?? 0
+      const next = base.spans.findIndex((sp, j) => j > i && sp && units[j].kind !== 'j')
+      const to = Math.min(from + END_FRAMES, next < 0 ? post.T : base.spans[next][0])
+      let trace = 0
+      for (let t = from; t < to; t++) trace = Math.max(trace, fullVowelMass(post, t))
+      out.push({ ...at, kind: 'end-vowel', test: 'vowel added at the end', expected: 'silent', partner: 'a vowel', llr, trace })
+    }
+    if (u.avEnding) {
+      // ־ָיו read "-ai-yoo"
+      const llr = base.score - replace(i, 1, { kind: 'v', tokens: [...new Set([...VOWEL_CLASS.i, 'j'].filter(has))], optional: true, word: u.word }, { kind: 'v', tokens: VOWEL_CLASS.u, word: u.word }).score
+      out.push({ ...at, kind: 'ending', test: '-av ending', expected: 'av', partner: 'ayu', llr })
     }
     if (u.vowelTest === 'sheva-na') {
       const saidAlign = swap(i, { optional: false }), said = saidAlign.score
@@ -549,7 +672,7 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       let trace = 0
       for (let t = from; t < to; t++) trace = Math.max(trace, vowelMass(post, t))
       const llr = said - without.score
-      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(trace, u.canCluster), llr, trace, heardAs })
+      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(trace, u.canCluster, u.releasedStop), llr, trace, heardAs })
     } else if (u.vowelTest && u.rivals.length) {
       const alt = swap(i, { tokens: u.rivals.flatMap(v => VOWEL_CLASS[v]) })
       const llr = base.score - alt.score

@@ -9,7 +9,8 @@
 //            | { word, problem: 'skipped' | 'wrong word' | 'prefix left out' | ... }] }
 //   a problem names the check that should catch it (matched on its test)
 //   right or wrong may be left out; a wrong take with no flag is a variation
-//   that should pass (a pause, a self-correction)
+//   that should pass (a pause, a self-correction), or, with `ungraded`, a real
+//   mistake we choose not to grade (so nothing else should be flagged)
 //
 // Round 1 came from the app's verses; round 2 is chosen for coverage: each
 // letter pair in every position (start, after a sheva, doubled, soft, final),
@@ -33,7 +34,7 @@ export const groups = [
   { id: 'long', title: 'Long words', note: 'One mistake somewhere in a long word: a vowel, a sheva, or a whole syllable dropped.' },
   { id: 'prefix', title: 'Dropped prefixes', note: 'The little "ve-", "ha-", "u-", "la-" swallowed. Not detected yet; these are for building that check.' },
   { id: 'letters', title: 'Look-alike letters', note: 'A letter read as one that looks like it. Only shin/sin, bet/vet, kaf/khaf, pe/fe and tav/sav are checked so far; these are for building a check for every letter.' },
-  { id: 'english', title: 'Sounds English speakers get wrong', note: 'ח as "h", צ as "s" or "z", and the "h" of a final הּ dropped. Not detected yet.' },
+  { id: 'english', title: 'Sounds English speakers get wrong', note: 'ח as "h" and צ as "s" or "z": not detected yet. The "h" of a final הּ isn\'t graded: it\'s a breath the model barely hears, so a dropped one can\'t be told from a quiet one.' },
   { id: 'endings', title: 'Word endings', note: 'Patach genuvah read in the wrong order, a vowel added to a silent final sheva, and ־ָיו read "-ayu". Not detected yet.' },
   { id: 'reading', title: 'How students really read', note: 'Shema with pauses, repeats, noise and so on. Skipped and wrong words aren\'t detected yet (they\'ll show as missed); the rest should still catch the mistake and nothing else.' },
   { id: 'verse', title: 'Whole verses' },
@@ -224,13 +225,13 @@ export const items = [
   { round: 4, id: 'r4-chayim', group: 'english', text: 'חַיִּים', trad: S, right: 'cha-YIM', wrong: 'ha-YIM (ח as "h")', flag: [{ word: 'חַיִּים', letter: 'ח' }] },
   { round: 4, id: 'r4-tzadik', group: 'english', text: 'צַדִּיק', trad: S, right: 'tza-DIK', wrong: 'sa-DIK (צ as "s")', flag: [{ word: 'צַדִּיק', letter: 'צ' }] },
   { round: 4, id: 'r4-tziyon', group: 'english', text: 'צִיּוֹן', trad: S, right: 'tzi-YOHN', wrong: 'zi-YOHN (צ as "z")', flag: [{ word: 'צִיּוֹן', letter: 'צ' }] },
-  { round: 4, id: 'r4-artzah', group: 'english', text: 'אַרְצָהּ', trad: S, right: 'ar-TZAH (the final h heard)', wrong: 'ar-TZA (the final h dropped)', flag: [{ word: 'אַרְצָהּ', letter: 'ה' }] },
+  { round: 4, id: 'r4-artzah', group: 'english', text: 'אַרְצָהּ', trad: S, right: 'ar-TZAH (the final h heard)', wrong: 'ar-TZA (the final h dropped)', flag: [], ungraded: 'The final h of הּ isn\'t graded.' },
 
   // Word endings
   { round: 4, id: 'r4-ruach', group: 'endings', text: 'רוּחַ', trad: S, right: 'ROO-ach', wrong: 'ROO-cha (patach after the ח)', flag: [{ word: 'רוּחַ', problem: 'patach genuvah' }] },
   { round: 4, id: 'r4-sameach', group: 'endings', text: 'שָׂמֵחַ', trad: S, right: 'sa-MEH-ach', wrong: 'sa-MEH-cha (patach after the ח)', flag: [{ word: 'שָׂמֵחַ', problem: 'patach genuvah' }] },
-  { round: 4, id: 'r4-at', group: 'endings', text: 'אַתְּ', trad: S, right: 'AT', wrong: 'A-ta (vowel added at the end)', flag: [{ word: 'אַתְּ', vowel: 'sheva-nach' }] },
-  { round: 4, id: 'r4-lech', group: 'endings', text: 'לֵךְ', trad: S, right: 'LECH', wrong: 'LE-cheh (vowel added at the end)', flag: [{ word: 'לֵךְ', vowel: 'sheva-nach' }] },
+  { round: 4, id: 'r4-at', group: 'endings', text: 'אַתְּ', trad: S, right: 'AT', wrong: 'A-ta (vowel added at the end)', flag: [{ word: 'אַתְּ', problem: 'vowel added at the end' }] },
+  { round: 4, id: 'r4-lech', group: 'endings', text: 'לֵךְ', trad: S, right: 'LECH', wrong: 'LE-cheh (vowel added at the end)', flag: [{ word: 'לֵךְ', problem: 'vowel added at the end' }] },
   { round: 4, id: 'r4-alav', group: 'endings', text: 'עָלָיו', trad: S, right: 'a-LAV', wrong: 'a-LAI-yoo', flag: [{ word: 'עָלָיו', problem: '-av ending' }] },
   { round: 4, id: 'r4-elav', group: 'endings', text: 'אֵלָיו', trad: S, right: 'e-LAV', wrong: 'e-LAI-yoo', flag: [{ word: 'אֵלָיו', problem: '-av ending' }] },
 
@@ -251,4 +252,4 @@ export const matchesFlag = (flag, s) => sameWord(flag.word, s.word) && (flag.pro
   ? s.test === flag.problem
   : flag.vowel
   ? (flag.vowel.startsWith('sheva') ? s.kind === flag.vowel : ['vowel', 'vowel-ou', 'vowel-missing'].includes(s.kind) && s.test === flag.vowel)
-  : s.kind === 'consonant' && (BASE[flag.letter] ?? flag.letter) === (BASE[s.letter] ?? s.letter))
+  : ['consonant', 'letter'].includes(s.kind) && (BASE[flag.letter] ?? flag.letter) === (BASE[s.letter] ?? s.letter))

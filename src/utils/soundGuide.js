@@ -9,10 +9,11 @@
 const VOWELS = {
   ah: 'as in "father"',
   eh: 'as in "bed"',
+  // sheva na: no English spelling fits, so it's shown with an example word
+  e: 'a quick, light "e", like the "be" in "believe"',
   ee: 'as in "see"',
   oh: 'as in "go"',
   oo: 'as in "food"',
-  uh: 'a quick, light vowel, like the "be" in "believe"',
   ay: 'as in "day"',
   oy: 'as in "boy"',
   aw: 'as in "law"',
@@ -30,14 +31,14 @@ const CONSONANTS = {
 // The sound guide shown with the results: the vowels, and the consonants
 // whose English spelling could mislead
 export const SOUND_GUIDE = {
-  vowels: ['ah', 'eh', 'ee', 'oh', 'oo', 'uh', 'ay', 'oy', 'aw'].map(say => ({ say, asIn: VOWELS[say] })),
+  vowels: ['ah', 'eh', 'e', 'ee', 'oh', 'oo', 'ay', 'oy', 'aw'].map(say => ({ say, asIn: VOWELS[say] })),
   consonants: ['kh', 'ts', 'g', 'sh', 's'].map(say => ({ say, asIn: CONSONANTS[say] })),
 }
 
 // "ee" as in "see" — a key spelling with its description
 export function describe(say) {
   const asIn = VOWELS[say] ?? CONSONANTS[say]
-  if (say === 'uh') return `a quick, light vowel, like the "be" in "believe"`
+  if (say === 'e') return `a quick, light vowel, like the "be" in "believe"`
   if (say === 'kh') return `"kh" (${asIn})`
   return asIn ? `"${say}" ${asIn}` : `"${say}"`
 }
@@ -49,7 +50,7 @@ export const consonantSay = latin => (latin === 'ch' ? 'kh' : latin ?? '')
 // and the tradition; null for none (a sheva nach is silent).
 export function vowelSay(syl, tradition) {
   const v = syl.atom?.vowel
-  if (v === 'sheva') return syl.shevaType === 'nach' || !syl.vowel ? null : 'uh'
+  if (v === 'sheva') return syl.shevaType === 'nach' || !syl.vowel ? null : 'e'
   if (v === 'qamats') {
     if (syl.qamatsType === 'katan') return 'oh'
     return tradition === 'ashkenazic' ? 'aw' : 'ah'

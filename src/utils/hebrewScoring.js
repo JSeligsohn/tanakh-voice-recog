@@ -595,10 +595,10 @@ function syllableNote(m, tradition, shevaMode) {
         (m.heardVowel ? ` — you said ${describeHeardVowel(m.heardVowel)}.` : ' — it was left out.'))
     }
     if (m.shevaType === 'na' && shevaMode === 'enforce' && !m.heardVowel) {
-      return issue('missing-sound', `Sheva na is ${describe('uh')} — it was left out, so the letters ran together.`)
+      return issue('missing-sound', `Sheva na is ${describe('e')} — it was left out, so the letters ran together.`)
     }
     if (m.shevaType === 'na' && shevaMode === 'enforce') {
-      return issue('wrong-vowel', `Sheva na is ${describe('uh')} — you said ${describeHeardVowel(m.heardVowel)}.`)
+      return issue('wrong-vowel', `Sheva na is ${describe('e')} — you said ${describeHeardVowel(m.heardVowel)}.`)
     }
     return issue(vowelIssue(m.heardVowel), vowelNote(m, tradition))
   }
@@ -877,7 +877,7 @@ export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
         add(syllableNote({ ...m, status: 'vowel-mismatch', heardVowel: '', vowelMatched: false }, tradition, shevaMode), { vowel: false })
       } else if (f.kind === 'sheva-na') {
         // the grader's least sure call: half a mistake (utils/wordScore.js)
-        const note = `Sheva na is ${describe('uh')} — it was only slightly heard. Say it a little more clearly.`
+        const note = `Sheva na is ${describe('e')} — it was only slightly heard. Say it a little more clearly.`
         add({ note, problems: [{ kind: 'partly-heard', count: 1, partial: true, text: note }] }, { vowel: false })
       } else if (f.kind === 'sheva-nach' || f.kind === 'end-vowel') {
         const said = describeHeardVowel(heardVowel(f.heard)) ?? 'a vowel'

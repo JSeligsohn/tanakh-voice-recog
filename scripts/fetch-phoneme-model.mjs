@@ -8,7 +8,7 @@
 // Windows, Linux ARM: 250 MB of its 299), which would otherwise be bundled
 // with the function and take it over Vercel's 250 MB limit.
 
-import { mkdir, stat, writeFile, rename, rm } from 'node:fs/promises'
+import { mkdir, stat, writeFile, rename, rm, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const ROOT = new URL('..', import.meta.url).pathname
@@ -18,7 +18,8 @@ const DIR = join(ROOT, 'models/zipa-s')
 if (process.env.VERCEL) {
   const bin = join(ROOT, 'node_modules/onnxruntime-node/bin/napi-v6')
   for (const other of ['darwin', 'win32', 'linux/arm64']) await rm(join(bin, other), { recursive: true, force: true })
-  console.log('[phoneme model] removed onnxruntime builds for other platforms')
+  const left = await readdir(bin, { recursive: true }).catch(err => [`(${err.message})`])
+  console.log(`[phoneme model] removed onnxruntime builds for other platforms; left in ${bin}: ${left.join(', ')}`)
 }
 const FILES = { 'model.int8.onnx': 70_000_000, 'tokens.txt': 500 }
 

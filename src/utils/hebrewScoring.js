@@ -732,9 +732,9 @@ function breakdownVowelName(seg) {
 // expectedPhonetic, syllables: [{ phoneme, note, problems, breakdown }] }. A syllable
 // is right when it has no note and all its sounds are right (syllableRight).
 export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, settings = {}) {
-  const { tradition = 'sephardic', shevaMode = 'enforce' } = settings
+  const { tradition = 'sephardic', shevaMode = 'enforce', reducedShevaOk = false } = settings
   const atoms = tokenizeWord(referenceWord)
-  const { segments, fullPhonetic } = getExpectedPhonetic(atoms, { tradition, shevaMode })
+  const { segments, fullPhonetic } = getExpectedPhonetic(atoms, { tradition, shevaMode, reducedShevaOk })
   const syllables = buildSyllables(atoms, segments)
 
   // No letters to grade (e.g. a stray punctuation token) — nothing to score
@@ -770,6 +770,24 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
     breakdown: makeBreakdown(m, !!m.consonantMatched, !!m.vowelMatched, tradition),
     _match: m,
   }))
+
+  // A kamatz that may be katan or gadol, closing on a sheva that may be silent
+  // or vocal (שָׁמְרוּ, no meteg): they go together. Katan "o" takes a silent
+  // sheva ("shom-ru"), gadol "a" a vocal one ("sha-me-ru"); "a" with a silent
+  // sheva passes as katan read leniently. Only "o" with a vocal sheva is wrong.
+  // (Sephardic only: in Ashkenazic the kamatz is "o" either way.)
+  if (tradition !== 'ashkenazic' && shevaMode === 'enforce') {
+    for (let i = 1; i < matches.length; i++) {
+      const sheva = matches[i], kamatz = matches[i - 1]
+      if (sheva.shevaType !== 'either' || kamatz.qamatsType !== 'ambiguous') continue
+      // the vowel heard: recorded on a mismatch, else the end of what matched
+      const vowelOf = m => m.heardVowel || (m.heard ?? '').replace(/^[^aeiouy]*/, '')
+      if (!/^(o|aw)/.test(vowelOf(kamatz)) || !vowelOf(sheva)) continue
+      const note = `This kamatz and sheva go together: "oh" with a silent sheva, or "ah" with a voiced one. You said "oh" and voiced the sheva.`
+      const ex = scoredSyllables[i]
+      scoredSyllables[i] = { ...ex, note: ex.note ? `${ex.note} ${note}` : note, problems: [...ex.problems, { kind: 'extra-sound', count: 1, text: note }] }
+    }
+  }
 
   // Penalize any trailing chars the student said after the word's expected end.
   // Attach the note to the last audible syllable so it's visible in the panel.
@@ -808,9 +826,9 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
 // word's first letter was heard. Returns one string per word ('' for a word
 // that wasn't heard).
 export function splitHeardAcrossWords(words, heard, settings = {}) {
-  const { tradition = 'sephardic', shevaMode = 'enforce' } = settings
+  const { tradition = 'sephardic', shevaMode = 'enforce', reducedShevaOk = false } = settings
   const atoms = tokenizeWord(words.join(''))
-  const { segments } = getExpectedPhonetic(atoms, { tradition, shevaMode })
+  const { segments } = getExpectedPhonetic(atoms, { tradition, shevaMode, reducedShevaOk })
   const { matches } = alignSyllables(buildSyllables(atoms, segments), heard)
   const student = normalizeStudent(heard).replace(/\s+/g, '')
   const starts = matches.filter(m => m.atom.wordStart).map(m => m.heardAt)

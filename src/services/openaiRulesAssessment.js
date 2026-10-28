@@ -58,7 +58,9 @@ export function gradeTranscription(transcription, referenceText, settings = {}, 
     : { heardByRef: referenceWords.map(() => '') }
   const { heardByRef } = alignment
 
-  const scored = applyAlignmentNotes(scoreWords(referenceWords, heardByRef, settings), alignment)
+  // The transcription often drops a quick sheva na after a long vowel or under
+  // a doubled letter, so those aren't counted as left out (reducedShevaOk)
+  const scored = applyAlignmentNotes(scoreWords(referenceWords, heardByRef, { ...settings, reducedShevaOk: true }), alignment)
 
   const nonOmitted = scored.filter(w => w.errorType !== 'Omission')
   const accuracy = nonOmitted.length > 0

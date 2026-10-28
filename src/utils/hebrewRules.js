@@ -119,7 +119,12 @@ function mergeVowelCarriers(atoms) {
 
     // Shuruk: ו with dagesh (looks like וּ), acts as 'u' vowel for previous atom
     if (a.letter === 'ו' && a.dagesh && !a.vowel) {
-      if (prev && !prev.vowel) { prev.vowel = 'shuruk'; continue }
+      if (prev && !prev.vowel) {
+        // after a consonant ו, that ו is still "v" (וַיִּשְׁתַּחֲווּ "-chavu")
+        if (prev.letter === 'ו') prev.consonantVav = true
+        prev.vowel = 'shuruk'
+        continue
+      }
       // Standalone shuruk (no carrier) — keep as-is, will read as 'u'
       a.vowel = 'shuruk'
       a.dagesh = false
@@ -130,10 +135,14 @@ function mergeVowelCarriers(atoms) {
     // Cholam malei: ו with cholam mark, becomes the cholam vowel for previous atom
     if (a.letter === 'ו' && a.vowel === 'holam' && !a.dagesh) {
       if (prev && !prev.vowel) { prev.vowel = 'holam'; continue }
+      // after a letter with its own vowel, it's a consonant "v" with cholam
+      // (מִצְוֹת "mitzvot", עֲוֹן "avon")
+      if (prev) a.consonantVav = true
     }
 
     // Chirik malei: י with no vowel of its own, after a letter with chirik
     if (a.letter === 'י' && !a.vowel && !a.dagesh && prev?.vowel === 'hiriq') {
+      prev.malei = true // a long vowel: a sheva after it is vocal (S2)
       continue // silent yud, part of chirik malei
     }
 
@@ -189,10 +198,19 @@ export function determineShevaType(atoms, index) {
   // a final form included (וַאֲבָרֶכְךָ "va'avarechecha")
   if (next && (FINAL_TO_BASE[next.letter] ?? next.letter) === (FINAL_TO_BASE[atom.letter] ?? atom.letter)) return 'na'
 
-  // S7: under a doubled letter (dagesh chazak after a vowel): strictly vocal,
-  // as the doubling opens a syllable (הַמְּלָכִים "hamelachim"), but many readers
-  // say it silent ("hamlachim"), so accept either.
-  if (hasDageshChazak(atom) && prev?.vowel) return 'either'
+  // S7: under a doubled letter (dagesh chazak after a vowel): vocal, as the
+  // doubling opens a syllable (הַמְּלָכִים "hamelachim"; "hamlachim" is a mistake)
+  if (hasDageshChazak(atom) && prev?.vowel) return 'na'
+
+  // S9: after a vowel marked with a meteg (ga'ya): the meteg keeps that
+  // syllable open, so the sheva is vocal (וַֽיְהִי "va-ye-hi", שָֽׁמְרוּ "sha-me-ru")
+  if (prev?.meteg) return 'na'
+
+  // S8: under the yod after וַ ("and", which doubles the next letter): the
+  // yod drops its dagesh, so strictly the sheva is vocal as under a doubled
+  // letter ("va-ye-hi"), while most readers close the syllable ("vay-hi").
+  // Either is accepted.
+  if (atom.letter === 'י' && !atom.dagesh && index === 1 && prev?.letter === 'ו' && prev.vowel === 'patah') return 'either'
 
   // After a qamats the sheva follows the qamats type: katan closes the syllable
   // (חָכְמָה "chochma" — nach); without a meteg we can't tell, so either is fine.
@@ -202,13 +220,26 @@ export function determineShevaType(atoms, index) {
     if (qType === 'ambiguous') return 'either'
   }
 
-  // S2: after a long vowel. Strictly vocal (וּבְנֵי "uvenei"), but most readers
-  // say it silent ("uvnei"), so accept either — unless a meteg marks the long
-  // vowel, which settles it as vocal.
-  if (LONG_VOWELS.has(prev?.vowel)) return prev.meteg ? 'na' : 'either'
+  // S2: after a long vowel, chirik malei included: vocal (שׁוֹמְרִים "shomerim",
+  // וּבְנֵי "uvenei", וַיִּירְאוּ "vayireu").
+  // Many readers say it silent ("shomrim"); with shevas enforced that's a
+  // mistake, and only genuinely disputed shevas accept either.
+  if (LONG_VOWELS.has(prev?.vowel) || prev?.malei) return 'na'
 
   // S3 (default): after short vowel in middle = nach
   return 'nach'
+}
+
+// A sheva na that fluent speech (and so a text transcription) often reduces
+// to nothing: after a long vowel (S2) or under a doubled letter (S7). Not one
+// at the start of a word, the second of two, before an identical letter, or
+// after a meteg, which are always clearly vocal.
+export function isReducibleNa(atoms, index) {
+  const atom = atoms[index], prev = atoms[index - 1], next = atoms[index + 1]
+  if (atom.vowel !== 'sheva' || index === 0 || atom.wordStart || atom.isFinal) return false
+  if (next?.vowel === 'sheva' || prev?.vowel === 'sheva' || prev?.meteg) return false
+  if (next && (FINAL_TO_BASE[next.letter] ?? next.letter) === (FINAL_TO_BASE[atom.letter] ?? atom.letter)) return false
+  return (hasDageshChazak(atom) && !!prev?.vowel) || LONG_VOWELS.has(prev?.vowel) || !!prev?.malei
 }
 
 // ── Expected-phonetic generator ──────────────────────────────────────
@@ -217,11 +248,15 @@ export function determineShevaType(atoms, index) {
 // `sound` is the canonical Latin-letter representation we'll match the
 // transcription against (e.g. "sh", "a", "b", "e" for sheva-na).
 
-export function getExpectedPhonetic(atoms, { tradition = 'sephardic', shevaMode = 'enforce' } = {}) {
+// reducedShevaOk: grading from a text transcription, which often drops a quick
+// sheva na after a long vowel or under a doubled letter even when it was said
+// ("uvnei" for "u-ve-nei"), so silence is accepted there. Grading from the
+// sounds themselves (or typed readings) leaves it off: those shevas are na.
+export function getExpectedPhonetic(atoms, { tradition = 'sephardic', shevaMode = 'enforce', reducedShevaOk = false } = {}) {
   const segments = atoms.map((atom, i) => {
     const consonant = consonantSound(atom, atoms, i, tradition)
     // altVowels: other readings accepted without penalty (lenient grading)
-    const { vowel, shevaType, qamatsType = null, altVowels = [] } = vowelSound(atom, atoms, i, tradition, shevaMode)
+    const { vowel, shevaType, qamatsType = null, altVowels = [] } = vowelSound(atom, atoms, i, tradition, shevaMode, reducedShevaOk)
     // altConsonants: other consonant readings accepted without penalty
     const altConsonants = isDivineNameHe(atoms, i) ? ['k'] : []
     const seg = { atomIndex: i, atom, consonant, vowel, shevaType, qamatsType, altVowels, altConsonants }
@@ -371,6 +406,7 @@ function consonantSound(atom, atoms, index, tradition) {
 
   // Vav functioning as a vowel carrier (shuruk "oo" or cholam "oh") — silent.
   // The 'u' or 'o' sound is produced by vowelSound, not consonantSound.
+  if (L === 'ו' && atom.consonantVav) return 'v'
   if (L === 'ו' && (atom.vowel === 'shuruk' || atom.vowel === 'holam')) return ''
 
   // Shin vs Sin determined by dot placement
@@ -403,7 +439,7 @@ function consonantSound(atom, atoms, index, tradition) {
   return MAP[L] ?? ''
 }
 
-function vowelSound(atom, atoms, index, tradition, shevaMode) {
+function vowelSound(atom, atoms, index, tradition, shevaMode, reducedShevaOk) {
   const v = atom.vowel
   if (!v) return { vowel: '', shevaType: null }
 
@@ -413,6 +449,7 @@ function vowelSound(atom, atoms, index, tradition, shevaMode) {
     const type = determineShevaType(atoms, index)
     // 'either' (after an ambiguous qamats) shows as vocal but accepts silence
     if (type === 'either') return { vowel: 'e', shevaType: type, altVowels: [''] }
+    if (type === 'na' && reducedShevaOk && isReducibleNa(atoms, index)) return { vowel: 'e', shevaType: type, altVowels: [''] }
     return { vowel: type === 'na' ? 'e' : '', shevaType: type }
   }
 

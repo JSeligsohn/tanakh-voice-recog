@@ -3,12 +3,23 @@
 // every build (npm run build), so Vercel bundles it with the function; skips
 // files already there. ZIPA is by Jian Zhu et al. (github.com/lingjzhu/zipa);
 // the ONNX export at huggingface.co/anyspeech/zipa-small-crctc-500k is CC BY 4.0.
+//
+// On Vercel it also deletes onnxruntime's builds for other platforms (macOS,
+// Windows, Linux ARM: 250 MB of its 299), which would otherwise be bundled
+// with the function and take it over Vercel's 250 MB limit.
 
-import { mkdir, stat, writeFile, rename } from 'node:fs/promises'
+import { mkdir, stat, writeFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
+const ROOT = new URL('..', import.meta.url).pathname
 const REPO = 'https://huggingface.co/anyspeech/zipa-small-crctc-500k/resolve/main'
-const DIR = join(new URL('..', import.meta.url).pathname, 'models/zipa-s')
+const DIR = join(ROOT, 'models/zipa-s')
+
+if (process.env.VERCEL) {
+  const bin = join(ROOT, 'node_modules/onnxruntime-node/bin/napi-v6')
+  for (const other of ['darwin', 'win32', 'linux/arm64']) await rm(join(bin, other), { recursive: true, force: true })
+  console.log('[phoneme model] removed onnxruntime builds for other platforms')
+}
 const FILES = { 'model.int8.onnx': 70_000_000, 'tokens.txt': 500 }
 
 await mkdir(DIR, { recursive: true })

@@ -1783,6 +1783,12 @@
   color: #92400e;
 }
 
+/* A sound only partly heard (half a mistake) */
+.problem-tag--partly-heard {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
 /* Picked out in a note: Hebrew, sounds, example words, sign names */
 .note-he {
   font-family: 'Frank Ruhl Libre', serif;

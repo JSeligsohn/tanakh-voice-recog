@@ -13,12 +13,16 @@
 //     count as right.
 //   - Each slip — an extra sound, a held vowel, a stutter, the word read out
 //     of place — is also one mistake.
+//   - A sound only partly heard (a faint sheva na) is half a mistake, and
+//     doesn't by itself hold the word to 80: the grader is least sure there.
 //   The mistakes are the ones the grader lists for each syllable (its problems),
 //   so the score, the word's label and its notes all count the same things.
 //   - A skipped word scores 0. A word never goes below 0, so neither does the verse.
 
 // A word with any mistake keeps this share of its sound score.
 export const MISTAKE_WORD_FACTOR = 0.8
+// What a sound only partly heard counts as, in mistakes
+export const PARTIAL_MISTAKE = 0.5
 
 // The sounds of a graded syllable: its consonant and vowel, each right or wrong
 const soundsOf = p => [p.breakdown?.consonant, p.breakdown?.vowel].filter(Boolean)
@@ -27,6 +31,11 @@ const soundsOf = p => [p.breakdown?.consonant, p.breakdown?.vowel].filter(Boolea
 // noted about it (a slip, like an extra sound or a held vowel, has a note but
 // no wrong sound). This is what the word popover marks ✓ or ✗.
 export const syllableRight = p => !p.note && soundsOf(p).every(s => s.correct)
+
+// ✓, ~ or ✗ for a graded syllable: "partly" when its only problems are
+// sounds partly heard
+export const syllableMark = p => syllableRight(p) ? 'right'
+  : p.problems?.length && p.problems.every(x => x.partial) ? 'partly' : 'wrong'
 
 // One graded word's score, sounds and mistakes (see the top of this file)
 export function wordScoreOf(w) {
@@ -40,17 +49,18 @@ export function wordScoreOf(w) {
     soundsRight += parts.filter(s => s.correct).length
   }
   const mistakes = mistakesOf(w)
+  const full = w.phonemes.some(p => (p.problems ?? []).some(x => !x.partial)) || (mistakes > 0 && !w.phonemes.some(p => p.problems))
   const soundShare = sounds ? Math.max(0, (sounds - mistakes) / sounds) : (mistakes ? 0 : 1)
-  const score = Math.round(100 * soundShare * (mistakes ? MISTAKE_WORD_FACTOR : 1))
+  const score = Math.round(100 * soundShare * (full ? MISTAKE_WORD_FACTOR : 1))
   return { word: w.word, score, sounds, soundsRight, mistakes, skipped: false }
 }
 
 // A word's mistakes: the ones its syllables list (problems: one mistake per
-// wrong or missing sound, and one per slip). Readings saved before mistakes
+// wrong or missing sound, and one per slip; half for a sound partly heard). Readings saved before mistakes
 // were listed count each wrong sound, and a note with no wrong sound as one slip.
 function mistakesOf(w) {
   if (w.phonemes.some(p => p.problems)) {
-    return w.phonemes.reduce((n, p) => n + (p.problems ?? []).reduce((k, x) => k + x.count, 0), 0)
+    return w.phonemes.reduce((n, p) => n + (p.problems ?? []).reduce((k, x) => k + x.count * (x.partial ? PARTIAL_MISTAKE : 1), 0), 0)
   }
   let mistakes = w.errorType === 'OutOfOrder' ? 1 : 0
   for (const p of w.phonemes) {
@@ -72,6 +82,7 @@ const ISSUE_LABELS = {
   'held-vowel': 'Vowel held too long',
   'repeated': 'Repeated',
   'out-of-order': 'Out of order',
+  'partly-heard': 'Partly heard',
 }
 
 // Several of one kind: "2 missing sounds"
@@ -80,6 +91,7 @@ const ISSUE_PLURALS = {
   'wrong-vowel': 'wrong vowels',
   'missing-sound': 'missing sounds',
   'extra-sound': 'extra sounds',
+  'partly-heard': 'sounds partly heard',
 }
 
 // A problem's tag: "Wrong letter", or "2 missing sounds" for a syllable
@@ -95,9 +107,11 @@ export function problemLabel({ kind, count }) {
 // Readings saved before mistakes had kinds get a plain count.
 export function wordLabel(w) {
   if (w.errorType === 'Omission') return 'Skipped'
-  const count = mistakesOf(w)
-  if (count === 0) return 'Correct'
-  const kinds = [...new Set(w.phonemes.flatMap(p => (p.problems ?? []).map(x => x.kind)))]
+  if (mistakesOf(w) === 0) return 'Correct'
+  const problems = w.phonemes.flatMap(p => p.problems ?? [])
+  // each problem by its own count here: a sound partly heard is one, named
+  const count = problems.length ? problems.reduce((n, x) => n + x.count, 0) : mistakesOf(w)
+  const kinds = [...new Set(problems.map(x => x.kind))]
   if (kinds.length === 1 && count === 1) return ISSUE_LABELS[kinds[0]] ?? '1 mistake'
   if (kinds.length === 1 && ISSUE_PLURALS[kinds[0]]) return `${count} ${ISSUE_PLURALS[kinds[0]]}`
   return count === 1 ? '1 mistake' : `${count} mistakes`

@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { psukim } from '../src/data/psukim.js'
 import { assessManual } from '../src/services/manualAssessment.js'
-import { computeWordScore, wordLabel, wordScoreOf } from '../src/utils/wordScore.js'
+import { computeWordScore, syllableMark, wordLabel, wordScoreOf } from '../src/utils/wordScore.js'
 
 const score = (pasukIdx, tradition, heard) =>
   computeWordScore(assessManual(psukim[pasukIdx].text, heard, { tradition }).words)
@@ -104,4 +104,24 @@ test('"aviyo" for אָבִיךָ: the "kh" left out, the vowel right', () => {
   const avicha = words[9]
   assert.equal(wordLabel(avicha), 'Missing sound')
   assert.deepEqual(avicha.phonemes.map(p => p.note).filter(Boolean), ['The "kh" of ךָ wasn\'t heard — only its vowel, "aw" as in "law".'])
+})
+
+test('a sound only partly heard is half a mistake, without the 80 cap', () => {
+  const ok = { consonant: { correct: true }, vowel: { correct: true } }
+  const faint = { consonant: { correct: true }, vowel: { correct: false } }
+  const note = 'Sheva na … only slightly heard.'
+  const lecha = {
+    word: 'לְךָ', errorType: 'Mispronunciation',
+    phonemes: [
+      { phoneme: 'לְ', note, problems: [{ kind: 'partly-heard', count: 1, partial: true, text: note }], breakdown: faint },
+      { phoneme: 'ךָ', note: '', problems: [], breakdown: ok },
+    ],
+  }
+  assert.equal(wordScoreOf(lecha).score, 88)
+  assert.equal(wordLabel(lecha), 'Partly heard')
+  assert.equal(syllableMark(lecha.phonemes[0]), 'partly')
+  // with a real mistake too, the cap applies again
+  const both = { ...lecha, phonemes: [lecha.phonemes[0], { ...lecha.phonemes[1], note: 'x', problems: [{ kind: 'wrong-vowel', count: 1, text: 'x' }], breakdown: faint }] }
+  assert.equal(wordScoreOf(both).score, Math.round(100 * (4 - 1.5) / 4 * 0.8))
+  assert.equal(syllableMark(both.phonemes[1]), 'wrong')
 })

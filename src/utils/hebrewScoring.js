@@ -876,7 +876,9 @@ export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
       } else if (f.kind === 'vowel-missing' || (f.kind === 'sheva-na' && f.partner === 'left out')) {
         add(syllableNote({ ...m, status: 'vowel-mismatch', heardVowel: '', vowelMatched: false }, tradition, shevaMode), { vowel: false })
       } else if (f.kind === 'sheva-na') {
-        add(issue('missing-sound', `Sheva na is ${describe('uh')} — it was only slightly heard. Say it a little more clearly.`), { vowel: false })
+        // the grader's least sure call: half a mistake (utils/wordScore.js)
+        const note = `Sheva na is ${describe('uh')} — it was only slightly heard. Say it a little more clearly.`
+        add({ note, problems: [{ kind: 'partly-heard', count: 1, partial: true, text: note }] }, { vowel: false })
       } else if (f.kind === 'sheva-nach' || f.kind === 'end-vowel') {
         const said = describeHeardVowel(heardVowel(f.heard)) ?? 'a vowel'
         add(issue('extra-sound', `Sheva nach is silent — no vowel after this letter. You said ${said}.`), { vowel: false })

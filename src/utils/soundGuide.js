@@ -12,7 +12,7 @@ const VOWELS = {
   ee: 'as in "see"',
   oh: 'as in "go"',
   oo: 'as in "food"',
-  uh: 'a quick sound, like the "a" in "about"',
+  uh: 'a quick, light vowel, like the "be" in "believe"',
   ay: 'as in "day"',
   oy: 'as in "boy"',
   aw: 'as in "law"',
@@ -37,7 +37,7 @@ export const SOUND_GUIDE = {
 // "ee" as in "see" — a key spelling with its description
 export function describe(say) {
   const asIn = VOWELS[say] ?? CONSONANTS[say]
-  if (say === 'uh') return `a quick "uh", like the "a" in "about"`
+  if (say === 'uh') return `a quick, light vowel, like the "be" in "believe"`
   if (say === 'kh') return `"kh" (${asIn})`
   return asIn ? `"${say}" ${asIn}` : `"${say}"`
 }

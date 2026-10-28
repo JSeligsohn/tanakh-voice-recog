@@ -10,7 +10,7 @@ import { listenUrl, elevenLabsUrl, playRecording } from './services/listen'
 import { isSpeechAvailable } from './services/azureAuth'
 import { splitHebrewToGroups, mapPhonemesToGroups, reconcileWords } from './utils/hebrew'
 import { splitVerseWords } from './utils/hebrewRules'
-import { syllableRight, wordLabel } from './utils/wordScore'
+import { syllableMark, wordLabel } from './utils/wordScore'
 import { currentTester } from './utils/tester'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
@@ -32,6 +32,10 @@ function scoreColor(score, errorType) {
   if (score >= 60) return '#d97706'
   return '#dc2626'
 }
+
+// A syllable's mark in the word popover: right, partly heard, wrong
+const MARK_COLORS = { right: '#16a34a', partly: '#d97706', wrong: '#dc2626' }
+const MARK_SIGNS = { right: '✓', partly: '~', wrong: '✗' }
 
 function scoreLabel(score, errorType) {
   if (errorType === 'Omission') return 'Skipped'
@@ -158,11 +162,11 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
   const { word, score, errorType, phonemes, phoneticHeard } = wordData
   const color = scoreColor(score, errorType)
   const groups = splitHebrewToGroups(word)
-  // The rules engine grades each syllable right or wrong (a skipped word's
+  // The rules engine grades each syllable right, partly heard or wrong (a skipped word's
   // syllables are left unmarked). OpenAI (LLM) scores natural Hebrew syllables,
   // shown directly; Azure's per-phoneme scores are mapped onto letter groups.
   const breakdownItems = phonemes?.some(p => p.breakdown)
-    ? phonemes.map(p => ({ chars: p.phoneme, score: null, right: errorType === 'Omission' ? null : syllableRight(p) }))
+    ? phonemes.map(p => ({ chars: p.phoneme, score: null, mark: errorType === 'Omission' ? null : syllableMark(p) }))
     : provider === 'openai' && phonemes?.length > 0
       ? phonemes.map(p => ({ chars: p.phoneme, score: p.accuracyScore ?? null }))
       : mapPhonemesToGroups(groups, phonemes)
@@ -222,17 +226,17 @@ function PhonemePanel({ wordData, provider, onClose, speechAvailable }) {
         <>
           <div className="char-breakdown" dir="rtl">
             {breakdownItems.map((item, i) => {
-              const cColor = item.right != null
-                ? (item.right ? '#16a34a' : '#dc2626')
+              const cColor = item.mark
+                ? MARK_COLORS[item.mark]
                 : item.score != null ? scoreColor(item.score, 'None') : '#d6d3d1'
               return (
                 <div key={i} className="char-item">
                   <span className="char-glyph" style={{ color: cColor }} lang="he">
                     {item.chars}
                   </span>
-                  {item.right != null ? (
-                    <span className="char-mark" style={{ color: cColor }} aria-label={item.right ? 'right' : 'wrong'}>
-                      {item.right ? '✓' : '✗'}
+                  {item.mark ? (
+                    <span className="char-mark" style={{ color: cColor }} aria-label={item.mark === 'partly' ? 'partly heard' : item.mark}>
+                      {MARK_SIGNS[item.mark]}
                     </span>
                   ) : item.score != null && (
                     <span className="char-score" style={{ color: cColor }}>

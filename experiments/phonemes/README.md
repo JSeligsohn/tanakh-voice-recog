@@ -28,15 +28,20 @@ Everything runs locally with no API calls. A verse takes about 2 s on an M2.
 
 ## Setup
 
+The scorer itself now lives in the app, `src/server/phonemes/scorer.js`. The app
+runs it with ZIPA small int8 (`api/phonemes.js`). Here `lib.mjs` wraps it with
+the experiment's defaults (`env.mjs`: xlsr, models from this folder's
+`models/`) and adds `loadAudio` (macOS `afconvert`). `onnxruntime-node` comes
+from the app's own install (`npm install` at the repo root).
+
 ```sh
 cd experiments/phonemes
-npm install
 mkdir -p models && for f in config.json preprocessor_config.json vocab.json onnx/model.onnx; do
   curl -sL -o models/$(basename $f) https://huggingface.co/qnighy/wav2vec2-xlsr-53-espeak-cv-ft-ONNX/resolve/main/$f
 done   # model.onnx is 1.26 GB
 ```
 
-Other models for `compare-models.mjs` (see `MODELS` in `lib.mjs`): the xlsr
+Other models for `compare-models.mjs` (see `MODELS` in the scorer): the xlsr
 `onnx/model_fp16.onnx` and `onnx/model_q4.onnx` from the same repo,
 `onnx-community/wav2vec2-lv-60-espeak-cv-ft-ONNX` into `models/lv60/`, and
 `anyspeech/zipa-small-crctc-500k` / `anyspeech/zipa-large-crctc-500k`

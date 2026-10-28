@@ -29,3 +29,6 @@ dist-ssr
 *.sw?
 .vercel
 .env*
+
+# The phoneme model (downloaded by scripts/fetch-phoneme-model.mjs)
+/models/

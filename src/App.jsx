@@ -4,6 +4,7 @@ import { startPronunciationAssessment } from './services/speechAssessment'
 import { assessWithOpenAI } from './services/openaiAssessment'
 import { assessWithOpenAIRules } from './services/openaiRulesAssessment'
 import { assessManual } from './services/manualAssessment'
+import { assessWithPhonemes } from './services/phonemeAssessment'
 import { speakHebrew } from './services/tts'
 import { listenUrl, elevenLabsUrl, playRecording } from './services/listen'
 import { isSpeechAvailable } from './services/azureAuth'
@@ -375,8 +376,9 @@ export default function App() {
   // A tester's recordings are saved for review (utils/tester.js)
   const [tester] = useState(currentTester)
   const [provider, setProvider] = useState(() => {
-    // Production testers only get OpenAI (Rules); the engine choice is dev-only
-    if (!import.meta.env.DEV) return 'openai-rules'
+    // In production the engine choice is dev-only: testers are graded by the
+    // phoneme scorer, everyone else by OpenAI (Rules)
+    if (!import.meta.env.DEV) return tester ? 'phonemes' : 'openai-rules'
     const stored = localStorage.getItem('tanakh-provider')
     if (stored === 'gemini') return 'openai' // migrate prior local value
     return stored ?? 'azure'
@@ -628,8 +630,8 @@ export default function App() {
       3000
     )
 
-    if (provider === 'openai' || provider === 'openai-rules') {
-      // No live streaming for OpenAI — recorder runs alone, assessment happens after Done.
+    if (provider === 'openai' || provider === 'openai-rules' || provider === 'phonemes') {
+      // No live streaming for OpenAI or the phoneme scorer — recorder runs alone, assessment happens after Done.
       clearTimeout(prepareTimerRef.current)
       setPhase('recording')
       return
@@ -673,7 +675,10 @@ export default function App() {
     )
   }
 
-  async function runOpenAIAssessment(useRulesEngine) {
+  // OpenAI (LLM), OpenAI (Rules) or the phoneme scorer: the recording is
+  // graded after Done. The rules engine and the phoneme scorer grade each
+  // maqef part as its own word.
+  async function runOpenAIAssessment(useRulesEngine, assess = useRulesEngine ? assessWithOpenAIRules : assessWithOpenAI) {
     const blob = await (blobPromiseRef.current ?? Promise.resolve(null))
     if (!blob) {
       setPhase('error')
@@ -681,7 +686,6 @@ export default function App() {
       return
     }
     try {
-      const assess = useRulesEngine ? assessWithOpenAIRules : assessWithOpenAI
       const checkPromise = runRecordingCheck(blob) // runs alongside the API call
       const { words, scores, rawSegment } = await assess(blob, pasuk.text, { tradition, shevaMode })
       // The rules engine grades each maqef part as its own word
@@ -699,7 +703,7 @@ export default function App() {
       setWordResults(reconciled)
     } catch (err) {
       setPhase('error')
-      setErrorMsg(err.message ?? 'OpenAI assessment failed. Please try again.')
+      setErrorMsg(err.message ?? 'Grading failed. Please try again.')
     }
   }
 
@@ -710,6 +714,8 @@ export default function App() {
       runOpenAIAssessment(false)
     } else if (provider === 'openai-rules') {
       runOpenAIAssessment(true)
+    } else if (provider === 'phonemes') {
+      runOpenAIAssessment(true, assessWithPhonemes)
     } else {
       recognizerRef.current?.stop()
     }
@@ -938,11 +944,19 @@ export default function App() {
                 >
                   Manual
                 </button>
+                <button
+                  className={`provider-btn ${provider === 'phonemes' ? 'provider-btn--active' : ''}`}
+                  onClick={() => setProvider('phonemes')}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="Our phoneme scorer (ZIPA, api/phonemes.js) — checks each sound against the recording, no OpenAI"
+                >
+                  Phonemes
+                </button>
               </div>
             </div>
           )}
 
-          {(provider === 'openai' || provider === 'openai-rules' || provider === 'manual') && (
+          {(provider === 'openai' || provider === 'openai-rules' || provider === 'manual' || provider === 'phonemes') && (
             <div className="settings-group">
               <div className="provider-selector">
                 <span className="provider-label">Tradition</span>

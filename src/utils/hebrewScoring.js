@@ -819,6 +819,95 @@ export function scoreWordAgainstTranscription(referenceWord, heardPhonetic, sett
   }
 }
 
+// Score a single word from the phoneme scorer's findings (api/phonemes.js)
+// instead of a transcription: each finding names the letter (atomIndex) and
+// what was heard there. Returns the same shape as scoreWordAgainstTranscription,
+// with the same notes, so the app shows both graders' results alike.
+//   findings: [{ atomIndex, kind, partner, heard }] for this word, where kind is
+//   one of the scorer's checks — consonant, letter (partner: the sound heard),
+//   vowel, vowel-ou (partner: the vowel heard), vowel-missing, sheva-na
+//   (partner: 'short' or 'left out'), sheva-nach, end-vowel (heard: the vowel
+//   added), syllable (left out), order (patach genuvah after its letter),
+//   ending (־ָיו said "-ai-yoo") — or word (partner: what was heard instead)
+export function gradeWordFromFindings(referenceWord, findings, settings = {}) {
+  const { tradition = 'sephardic', shevaMode = 'enforce' } = settings
+  const atoms = tokenizeWord(referenceWord)
+  const { segments, fullPhonetic } = getExpectedPhonetic(atoms, { tradition, shevaMode })
+  const syllables = buildSyllables(atoms, segments)
+  if (syllables.length === 0) {
+    return { word: referenceWord, score: 100, errorType: 'None', phoneticHeard: '', expectedPhonetic: '', syllables: [] }
+  }
+
+  const wordFinding = findings.find(f => f.kind === 'word')
+  if (wordFinding?.test === 'skipped') {
+    return {
+      word: referenceWord, score: 0, errorType: 'Omission', phoneticHeard: '', expectedPhonetic: fullPhonetic,
+      syllables: syllables.map(s => ({ phoneme: s.display, note: '', problems: [], breakdown: makeBreakdown(s, false, false, tradition) })),
+    }
+  }
+
+  // The scorer's "schwa" is a reduced vowel: the key's "eh" is closest
+  const heardVowel = v => (v === 'schwa' ? 'e' : v ?? '')
+  const graded = syllables.map((syl, k) => {
+    const here = findings.filter(f => f.atomIndex === syl.atomIndex && f.kind !== 'word')
+    const m = { ...syl, consonantMatched: true, vowelMatched: true }
+    const parts = []
+    let consonantRight = true, vowelRight = true
+    const add = (result, { consonant = true, vowel = true } = {}) => {
+      parts.push(result)
+      consonantRight &&= consonant
+      vowelRight &&= vowel
+    }
+    for (const f of here) {
+      if (f.kind === 'syllable') {
+        add(skippedNote({ ...m, status: 'missing' }, tradition), { consonant: false, vowel: false })
+      } else if (f.kind === 'consonant' || f.kind === 'letter') {
+        add(buildMismatchNote({ ...m, status: 'mismatch', heardConsonant: f.partner, consonantMatched: false }, tradition), { consonant: false })
+      } else if (f.kind === 'vowel' || f.kind === 'vowel-ou') {
+        add(syllableNote({ ...m, status: 'vowel-mismatch', heardVowel: f.partner, vowelMatched: false }, tradition, shevaMode), { vowel: false })
+      } else if (f.kind === 'vowel-missing' || (f.kind === 'sheva-na' && f.partner === 'left out')) {
+        add(syllableNote({ ...m, status: 'vowel-mismatch', heardVowel: '', vowelMatched: false }, tradition, shevaMode), { vowel: false })
+      } else if (f.kind === 'sheva-na') {
+        add(issue('missing-sound', `Sheva na is ${describe('uh')} — it was only slightly heard. Say it a little more clearly.`), { vowel: false })
+      } else if (f.kind === 'sheva-nach' || f.kind === 'end-vowel') {
+        const said = describeHeardVowel(heardVowel(f.heard)) ?? 'a vowel'
+        add(issue('extra-sound', `Sheva nach is silent — no vowel after this letter. You said ${said}.`), { vowel: false })
+      } else if (f.kind === 'order') {
+        add(syllableNote({ ...m, status: 'genuvah-reversed', heard: f.partner }, tradition, shevaMode), { vowel: false })
+      } else if (f.kind === 'ending') {
+        add(issue('extra-sound', `ָיו at the end of a word is said "av" — the י and ו aren't read as vowels. You said "ai-yoo".`), { consonant: false })
+      }
+    }
+    // A word that doesn't sound like itself: every sound wrong, the note on its first syllable
+    if (wordFinding) {
+      consonantRight = vowelRight = false
+      if (k === 0) {
+        const sounds = syllables.reduce((n, s) => n + [s.consonant, s.vowel].filter(Boolean).length, 0)
+        const note = wordFinding.test === 'unclear'
+          ? `This word couldn't be heard clearly — read it again, a little louder.`
+          : `This didn't sound like ${referenceWord} — something else was read here.`
+        parts.push({ note, problems: [{ kind: 'missing-sound', count: Math.max(1, sounds), text: note }] })
+      }
+    }
+    return {
+      phoneme: syl.display,
+      note: parts.map(p => p.note).filter(Boolean).join(' '),
+      problems: parts.flatMap(p => p.problems),
+      breakdown: makeBreakdown(syl, consonantRight, vowelRight, tradition),
+    }
+  })
+
+  const errorType = graded.every(syllableRight) ? 'None' : 'Mispronunciation'
+  return {
+    word: referenceWord,
+    score: wordScoreOf({ errorType, phonemes: graded }).score,
+    errorType,
+    phoneticHeard: '',
+    expectedPhonetic: fullPhonetic,
+    syllables: graded,
+  }
+}
+
 // Split what was heard for a run of maqef-joined words (אֶל־, אַבְרָם heard
 // together as "elavram") into each word's part. The run is aligned as one
 // phrase, so sounds that run across the maqef land where they belong

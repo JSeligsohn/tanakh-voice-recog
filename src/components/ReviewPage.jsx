@@ -1,12 +1,14 @@
 // Review page (/?review): testers' saved attempts — listen to each recording,
 // see what the transcriber wrote back (its raw reply), and how the rules
-// engine grades it now. /?review=<id> is a tester's shared link to one attempt
+// engine grades it now; for the phoneme scorer's attempts, what it flagged,
+// graded as the app grades it now. /?review=<id> is a tester's shared link to one attempt
 // ("Share for review" in the app), opened straight away. Asks once for the
 // review password (REVIEW_KEY on the server) and remembers it on this device.
 
 import { useCallback, useEffect, useState } from 'react'
 import { psukim } from '../data/psukim'
 import { parseTranscription, gradeTranscription } from '../services/openaiRulesAssessment'
+import { gradeFindings } from '../services/phonemeAssessment'
 import { wordLabel } from '../utils/wordScore'
 import SyllableProblems from './SyllableProblems'
 import '../App.css'
@@ -28,9 +30,15 @@ async function review(key, { method = 'GET', query = '' } = {}) {
 
 const scoreColor = score => (score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626')
 
-// The attempt graded by today's rules engine, as the app grades a reading
+// The attempt graded by today's rules engine, as the app grades a reading. A
+// phoneme scorer attempt keeps what was flagged then (re-scoring needs the
+// model): its findings are graded as the app grades them today.
 function regrade(attempt) {
   try {
+    if (attempt.provider === 'phonemes') {
+      const { words, scores } = gradeFindings(attempt.phonemes, attempt.referenceText, attempt.settings)
+      return { transcription: attempt.phonemes.heard, heardLabel: 'Phonemes heard', words, scores }
+    }
     const transcription = parseTranscription(attempt.content)
     const { words, scores } = gradeTranscription(transcription, attempt.referenceText, attempt.settings)
     return { transcription, words, scores }
@@ -63,7 +71,7 @@ function AttemptDetails({ attempt, graded, reviewKey }) {
       <AttemptAudio id={attempt.id} reviewKey={reviewKey} />
 
       <div className="review-field">
-        <span className="review-label">Transcription</span>
+        <span className="review-label">{graded.heardLabel ?? 'Transcription'}</span>
         <code className="review-transcription">{graded.transcription ?? '—'}</code>
       </div>
 
@@ -87,7 +95,7 @@ function AttemptDetails({ attempt, graded, reviewKey }) {
                 <div className="review-issue-head">
                   <span className="review-issue-word" dir="rtl" lang="he">{w.word}</span>
                   <span className="review-issue-label">{w.score} · {wordLabel(w)}</span>
-                  <span className="review-muted">heard <code>{w.phoneticHeard || '—'}</code></span>
+                  {attempt.provider !== 'phonemes' && <span className="review-muted">heard <code>{w.phoneticHeard || '—'}</code></span>}
                 </div>
                 {w.errorType !== 'Omission' && <SyllableProblems phonemes={w.phonemes} />}
               </li>

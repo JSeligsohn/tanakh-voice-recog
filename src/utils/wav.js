@@ -1,13 +1,12 @@
-// Recorded audio (webm/ogg/mp4 from MediaRecorder) → base64 mono 16-bit WAV
-// at 24 kHz, the format sent to the OpenAI audio model. 24 kHz keeps speech
-// clear while halving the size of a typical 48 kHz recording, so about a
-// minute of audio fits under the server's 4.5 MB request limit.
+// Recorded audio (webm/ogg/mp4 from MediaRecorder) → base64 mono 16-bit WAV.
+// 24 kHz by default, the format sent to the OpenAI audio model: it keeps
+// speech clear while halving the size of a typical 48 kHz recording, so about
+// a minute of audio fits under the server's 4.5 MB request limit. The phoneme
+// scorer takes 16 kHz, the rate its model listens at.
 
-const TARGET_RATE = 24000
-
-export async function blobToWavBase64(blob) {
+export async function blobToWavBase64(blob, rate = 24000) {
   // decodeAudioData resamples to the context's sample rate
-  const ctx = new OfflineAudioContext(1, 1, TARGET_RATE)
+  const ctx = new OfflineAudioContext(1, 1, rate)
   const decoded = await ctx.decodeAudioData(await blob.arrayBuffer())
   return toBase64(encodeWav(decoded.getChannelData(0), decoded.sampleRate))
 }

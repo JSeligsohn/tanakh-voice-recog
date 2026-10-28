@@ -85,8 +85,8 @@ function render() {
       <div class="meta">${esc(a.tester ?? '?')} · ${esc(new Date(a.createdAt).toLocaleString())} · ${esc(a.settings?.tradition ?? '')}</div>
       <div class="heb">${esc(a.referenceText)}</div>
       <audio controls preload="none" src="/compare/audio?id=${encodeURIComponent(a.id)}"></audio>
-      <div class="heard">gpt-audio heard: ${esc(a.transcription)}</div>
-      ${shown.length ? `<table><thead><tr><th>Word</th><th>Current grader (gpt-audio)</th><th>Phoneme scorer</th><th>Who's right?</th></tr></thead><tbody>
+      ${a.transcription ? `<div class="heard">gpt-audio heard: ${esc(a.transcription)}</div>` : ''}
+      ${shown.length ? `<table><thead><tr><th>Word</th><th>${esc(a.currentName ?? 'Current grader (gpt-audio)')}</th><th>Phoneme scorer (${esc(a.model ?? '')})</th><th>Who's right?</th></tr></thead><tbody>
         ${shown.map(({ w, wi, c, p }) => {
           const v = state.verdicts[`${a.id}#${wi}`]?.verdict
           return `<tr class="${c !== p ? 'disagree' : ''}"><td class="word">${esc(w.word)}</td><td>${currentText(w)}</td><td>${phonemeText(w)}</td>

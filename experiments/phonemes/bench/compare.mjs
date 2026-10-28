@@ -1,5 +1,8 @@
 // The current grader and the phoneme scorer side by side, on testers' real
-// attempts. Attempts come from the app's Review API (with the review password
+// attempts. For an attempt the app graded with gpt-audio, "current" is the
+// rules engine on its transcription; for one graded by the app's phoneme
+// scorer (ZIPA), it's what that scorer flagged, so this compares ZIPA with
+// the model run here (xlsr by default). Attempts come from the app's Review API (with the review password
 // the user types into the Compare page; it's passed through, never stored),
 // and are kept in data/attempts/ (git-ignored). For each attempt, word by
 // word: what the production grader made of the gpt-audio transcription, and
@@ -9,6 +12,7 @@
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { gradeTranscription, parseTranscription } from '../../../src/services/openaiRulesAssessment.js'
+import { gradeFindings } from '../../../src/services/phonemeAssessment.js'
 import { splitVerseWords } from '../../../src/utils/hebrewRules.js'
 import { loadAudio, frameLogProbs, expectedUnits, scoreContrasts, isFlagged, MODEL_NAME } from '../lib.mjs'
 
@@ -49,8 +53,11 @@ const settingsOf = meta => (typeof meta.settings === 'string' ? JSON.parse(meta.
 async function compareOne(meta) {
   const settings = settingsOf(meta)
   const words = splitVerseWords(meta.referenceText)
-  const transcription = typeof meta.content === 'string' ? parseTranscription(meta.content) : meta.content?.transcription ?? ''
-  const current = gradeTranscription(transcription, meta.referenceText, settings).words
+  const byPhonemes = meta.provider === 'phonemes'
+  const transcription = byPhonemes ? '' : typeof meta.content === 'string' ? parseTranscription(meta.content) : meta.content?.transcription ?? ''
+  const current = byPhonemes
+    ? gradeFindings(meta.phonemes, meta.referenceText, settings).words
+    : gradeTranscription(transcription, meta.referenceText, settings).words
 
   // 0.4 s of silence first: a recording that starts on the first sound loses
   // an opening b, k or p
@@ -64,6 +71,7 @@ async function compareOne(meta) {
   return {
     id: meta.id, tester: meta.tester, createdAt: meta.createdAt, referenceText: meta.referenceText, settings, transcription,
     model: MODEL_NAME,
+    currentName: byPhonemes ? `What the tester saw (${meta.model})` : 'Current grader (gpt-audio)',
     words: words.map((word, wi) => {
       const c = current[wi]
       const notes = (c?.phonemes ?? []).filter(p => p.note).map(p => p.note)

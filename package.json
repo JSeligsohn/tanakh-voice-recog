@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:loop": "until vite; do echo '--- vite exited, restarting in 2s ---'; sleep 2; done",
-    "build": "vite build",
+    "build": "node scripts/fetch-phoneme-model.mjs && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test test/*.test.js"
@@ -15,6 +15,7 @@
     "@vercel/blob": "^2.8.2",
     "esbuild": "^0.28.0",
     "microsoft-cognitiveservices-speech-sdk": "^1.50.0",
+    "onnxruntime-node": "^1.31.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

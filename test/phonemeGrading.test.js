@@ -52,3 +52,9 @@ test('a word that sounds like another word: all its sounds wrong', () => {
   assert.equal(words[0].errorType, 'Mispronunciation')
   assert.ok(words[0].phonemes.every(p => p.breakdown.vowel?.correct !== true && p.breakdown.consonant?.correct !== true))
 })
+
+test('a letter left out, its vowel still said ("lo" for לְךָ)', () => {
+  const { words } = grade('לְךָ', [{ wi: 0, atomIndex: 1, kind: 'letter-missing', partner: 'left out' }])
+  assert.match(notesOf(words[0])[0], /"kh" of ךָ wasn't heard — only its vowel/)
+  assert.equal(words[0].phonemes[1].breakdown.consonant.correct, false)
+})

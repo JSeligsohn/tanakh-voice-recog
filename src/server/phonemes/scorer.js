@@ -221,12 +221,13 @@ const CONSONANT = {
 }
 // a model without a "ts" symbol (ZIPA) writes it t + s
 if (!CONSONANT.ts.length) CONSONANT.ts = set('t', 's')
-// ח is never a plain "h" (that's the mistake English speakers make), and ה is
-// never the throaty ħ; a soft כ heard as "h" still passes
-const LETTER_TOKENS = {
-  'ח': CONSONANT.ch.filter(t => !['h', 'ɦ'].includes(t)),
-  'ה': CONSONANT.h.filter(t => t !== 'ħ'),
-}
+// ח is never a plain "h" (the mistake English speakers make: "HE-sed"), and
+// ה is never the throaty ħ. A soft כ heard as "h" still passes: the model
+// hears a correct final "ch" as a breathy "h" (בָּרוּךְ), so it can't tell
+// "a-VI-ha" from a soft "a-VI-cha", and making it strict flagged correct
+// readings as the ך left out.
+const LETTER_TOKENS = { 'ח': CONSONANT.ch.filter(t => !['h', 'ɦ'].includes(t)), 'ה': CONSONANT.h.filter(t => t !== 'ħ') }
+const letterTokens = (letter, sound) => LETTER_TOKENS[letter] ?? CONSONANT[sound]
 // The letter check: each letter against the letters it looks like (ד ר ך,
 // ב כ, ה ח ת, ו ז ן, ס ם, ג נ, ט מ) and the sounds English speakers put in
 // its place (ח as "h", צ as "s" or "z"). Scoring against every other
@@ -241,6 +242,12 @@ const LOOKS_LIKE = {
 }
 // (צ said "s" can't be checked: the model hears a correct "tz" as "s" too,
 // in 9 of 12 correct readings on the bench)
+// Letters the model always hears when they're said, so one left out can be
+// caught: on the bench no correct reading of them fits better without them by
+// more than 3.6. Not ל, מ, נ-like sounds, ד, ר, ה or י: the model often misses
+// a quick one in a correct reading (as low as −6), and a soft ה at a word's
+// start is how fluent readers say it.
+const CLEAR_LETTERS = new Set(['ch', 'sh', 's', 't', 'k', 'b', 'g', 'f', 'n', 'ts'])
 const CONSONANT_TOKENS = new Set(Object.values(CONSONANT).flat().filter(t => !VOWELS.includes(t)))
 const letterRivals = (u, partner) => (LOOKS_LIKE[u.letter] ?? []).filter(c => c !== u.sound && c !== partner && !u.alsoSounds.includes(c))
 const rivalTokens = (u, classes) => [...new Set(classes.flatMap(c => CONSONANT[c]))].filter(t => CONSONANT_TOKENS.has(t) && !u.tokens.includes(t))
@@ -263,7 +270,7 @@ export function expectedUnits(text, settings = {}) {
       const c = seg.consonant
       const last = k === segments.length - 1
       const consonantUnit = c && CONSONANT[c] && {
-        kind: 'c', sound: c, tokens: [...new Set([...(LETTER_TOKENS[a.letter] ?? CONSONANT[c]), ...(seg.altConsonants ?? []).flatMap(k => CONSONANT[k] ?? [])])],
+        kind: 'c', sound: c, tokens: [...new Set([...letterTokens(a.letter, c), ...(seg.altConsonants ?? []).flatMap(k => CONSONANT[k] ?? [])])],
         alsoSounds: seg.altConsonants ?? [],
         word, wi, letter: a.letter, atomIndex: seg.atomIndex,
         test: testedLetter(a, c),
@@ -540,8 +547,8 @@ function soundDistance(units, heard) {
 //   sheva na sounds. Flagging it as short, from three deliberate "left out"
 //   takes that came out ə, flagged the user's natural verse readings.)
 const CUTOFFS = {
-  xlsr: { letter: -3, syllable: -6.5, order: -1, 'end-vowel': 0.6, ending: -1, consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
-  zipa: { letter: -3, syllable: -4.8, order: -1, 'end-vowel': 0.6, ending: -1, consonant: -1, vowel: -2.5, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -1.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -17, unclear: -5, different: 0.9 },
+  xlsr: { 'letter-missing': -4, letter: -3, syllable: -6.5, order: -1, 'end-vowel': 0.6, ending: -1, consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
+  zipa: { 'letter-missing': -4, letter: -3, syllable: -4.8, order: -1, 'end-vowel': 0.6, ending: -1, consonant: -1, vowel: -2.5, 'vowel-ou': -1, 'vowel-missing': -2.7, 'sheva-nach': -1.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -17, unclear: -5, different: 0.9 },
 }
 export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr']
 
@@ -649,6 +656,14 @@ export function scoreContrasts(post, units, base = align(post, units)) {
     const partner = u.test && (u.test === 'sav' ? 't' : PARTNER[u.sound])
     if (u.test) {
       out.push({ ...at, kind: 'consonant', test: u.test, expected: u.sound, partner, llr: base.score - swap(i, { tokens: CONSONANT[partner] }).score })
+    }
+    if (u.kind === 'c' && CLEAR_LETTERS.has(u.sound)) {
+      // a letter left out, its vowel still said ("lo" for לְךָ: no "ch"). Only
+      // if no other consonant fits there either: "HE-sed" for חֶסֶד fits better
+      // without the "ch" too, but its "h" is a swap (the letter checks), not a gap.
+      const without = align(post, units.filter((_, j) => j !== i)).score
+      const other = swap(i, { tokens: [...CONSONANT_TOKENS].filter(t => !u.tokens.includes(t)) }).score
+      if (without >= other - 1) out.push({ ...at, kind: 'letter-missing', test: u.letter, expected: u.sound, partner: 'left out', llr: base.score - without })
     }
     if (u.kind === 'c' && letterRivals(u, partner).length) {
       // every letter against all the others (a look-alike letter: ד for ר,

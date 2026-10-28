@@ -38,6 +38,7 @@
   .rounds button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
   .readers { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
   .rounds { flex-wrap: wrap; }
+  .quiet { background: var(--warnbg); color: var(--warn); border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; }
   @media (max-width: 560px) { .take { grid-template-columns: 1fr auto; } .kind { grid-column: 1 / 3; } .result { grid-column: 1 / 3; } }
 </style>
 </head>
@@ -111,15 +112,19 @@ function summarize() {
   const done = takes.filter(t => t.r)
   const wrong = done.filter(t => t.kind === 'wrong' && t.i.flag.length), right = done.filter(t => !(t.kind === 'wrong' && t.i.flag.length))
   const n = ts => ts.filter(t => t.r.ok).length
-  document.getElementById('summary').innerHTML =
+  const quiet = lastPeak !== null && lastPeak < 0.1
+    ? `<div class="quiet">That take was very quiet (its loudest moment was ${Math.round(lastPeak * 100)}% of full volume). Check the microphone in System Settings → Sound → Input: the right device selected, and the input volume turned up. Speak at a normal distance from it.</div>` : ''
+  document.getElementById('summary').innerHTML = quiet +
     `Round ${round}${round >= 3 ? ` (${reader})` : ''}: ${done.length} of ${takes.length} recorded · mistakes caught: <b>${n(wrong)}/${wrong.length}</b> · readings with no false flag: <b>${n(right)}/${right.length}</b>`
 }
 
+let lastPeak = null
 async function toWav(blob) {
   const decoded = await new AudioContext().decodeAudioData(await blob.arrayBuffer())
   const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * RATE), RATE)
   const src = off.createBufferSource(); src.buffer = decoded; src.connect(off.destination); src.start()
   const samples = (await off.startRendering()).getChannelData(0)
+  lastPeak = samples.reduce((m, x) => Math.max(m, Math.abs(x)), 0)
   const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf)
   const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)))
   str(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ')
@@ -150,26 +155,43 @@ async function start(btn) {
   }
   // Show "Stop" only once the recorder has really started, so the reader
   // doesn't begin before it (a Gen 1:1 take lost its first word that way)
-  recorder.onstart = () => setTimeout(() => { btn.textContent = '■ Stop — read now'; btn.classList.add('recording') }, 150)
+  // (Safari doesn't always send the start event, so fall back to a timer)
+  const ready = () => { if (active === btn && recorder) { btn.textContent = '■ Stop — read now'; btn.classList.add('recording') } }
+  recorder.onstart = () => setTimeout(ready, 150)
+  setTimeout(ready, 600)
   recorder.start()
   active = btn
   btn.textContent = 'Starting…'
   document.querySelectorAll('button.rec').forEach(b => { if (b !== btn) b.disabled = true })
 }
 
-// Play straight from the URL, started inside the click (Safari blocks play()
-// after an await). The server answers range requests, which Safari needs.
-let playing = null
-function playTake(btn) {
-  playing?.pause()
-  playing = new Audio(`/audio?file=${encodeURIComponent(btn.dataset.play)}`)
-  btn.textContent = '▶ playing'
-  playing.onended = () => { btn.textContent = '▶ play' }
-  playing.play().catch(err => {
+// Play a take turned up to a normal level (most takes are recorded very
+// quietly). The audio context starts inside the click, as Safari requires.
+let ctx = null, playing = null
+async function playTake(btn) {
+  ctx ??= new AudioContext()
+  ctx.resume()
+  try { playing?.stop() } catch {}
+  btn.textContent = '▶ loading…'
+  try {
+    const res = await fetch(`/audio?file=${encodeURIComponent(btn.dataset.play)}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const buf = await ctx.decodeAudioData(await res.arrayBuffer())
+    const peak = buf.getChannelData(0).reduce((m, x) => Math.max(m, Math.abs(x)), 0) || 1
+    const gain = ctx.createGain()
+    gain.gain.value = Math.min(50, 0.9 / peak)
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(gain).connect(ctx.destination)
+    src.onended = () => { btn.textContent = '▶ play' }
+    src.start()
+    playing = src
+    btn.textContent = '▶ playing'
+  } catch (err) {
     btn.textContent = '▶ play (failed)'
     btn.title = err.message
     console.error('playback', err)
-  })
+  }
 }
 
 document.addEventListener('click', e => {

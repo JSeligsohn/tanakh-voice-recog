@@ -469,12 +469,12 @@ function soundDistance(units, heard) {
 //            whispered), "wrong word" if what was heard differs from it in at
 //            least `different` of its sounds (round 3: "gadol" for אֶחָד, 1.0;
 //            one-sound mistakes up to 0.79)
-//   mumbled: said, but mostly a reduced "ə" (at least this share) is short too;
-//            the deliberate "left out" takes that still had a vowel (l-CHA,
-//            mish-p-CHOT, BNEI) were mostly ə, clearly said ones mostly e
+//   (a sheva heard as a reduced "ə" counts as said: that's how a natural
+//   sheva na sounds. Flagging it as short, from three deliberate "left out"
+//   takes that came out ə, flagged the user's natural verse readings.)
 const CUTOFFS = {
-  xlsr: { consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, some: 0.1, mumbled: 0.35, skipped: -35, unclear: -5, different: 0.9 },
-  zipa: { consonant: -1, vowel: -2.5, 'vowel-ou': -2, 'vowel-missing': -4.5, 'sheva-nach': -1.5, said: 0.6, some: 0.1, mumbled: 0.6, skipped: -35, unclear: -5, different: 0.9 },
+  xlsr: { consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
+  zipa: { consonant: -1, vowel: -2.5, 'vowel-ou': -2, 'vowel-missing': -4.5, 'sheva-nach': -1.5, said: 0.6, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
 }
 export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr']
 
@@ -482,8 +482,8 @@ export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr
 // of its own but leaves a trace of vowel; with no trace at all, the letters
 // ran together. The trace decides, not the alignment: in יְדֵי the model hears
 // "ye" as an "i" and gives it to the yod.
-function shevaNaVerdict(trace, canCluster, heardAs) {
-  if (trace >= FLAG_BELOW.said) return heardAs?.class === 'schwa' && heardAs.schwa >= FLAG_BELOW.mumbled ? 'short' : 'said'
+function shevaNaVerdict(trace, canCluster) {
+  if (trace >= FLAG_BELOW.said) return 'said'
   return trace >= FLAG_BELOW.some || !canCluster ? 'short' : 'left out'
 }
 export const isFlagged = s => s.kind === 'word' || (s.kind === 'sheva-na' ? s.partner !== 'said' : s.llr < FLAG_BELOW[s.kind])
@@ -549,7 +549,7 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       let trace = 0
       for (let t = from; t < to; t++) trace = Math.max(trace, vowelMass(post, t))
       const llr = said - without.score
-      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(trace, u.canCluster, heardAs), llr, trace, heardAs })
+      out.push({ ...at, kind: 'sheva-na', test: 'sheva-na', expected: 'said', partner: shevaNaVerdict(trace, u.canCluster), llr, trace, heardAs })
     } else if (u.vowelTest && u.rivals.length) {
       const alt = swap(i, { tokens: u.rivals.flatMap(v => VOWEL_CLASS[v]) })
       const llr = base.score - alt.score

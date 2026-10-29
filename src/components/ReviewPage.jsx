@@ -33,9 +33,13 @@ const scoreColor = score => (score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' :
 // The attempt graded by today's rules engine, as the app grades a reading. A
 // phoneme scorer attempt keeps what was flagged then (re-scoring needs the
 // model): its findings are graded as the app grades them today.
+// (the live reader's attempts, 'phonemes-live', are phoneme scorer attempts
+// too: the full report scored at the end)
+const byPhonemes = attempt => attempt.provider === 'phonemes' || attempt.provider === 'phonemes-live'
+
 function regrade(attempt) {
   try {
-    if (attempt.provider === 'phonemes') {
+    if (byPhonemes(attempt)) {
       const { words, scores } = gradeFindings(attempt.phonemes, attempt.referenceText, attempt.settings)
       return { transcription: attempt.phonemes.heard, heardLabel: 'Phonemes heard', words, scores }
     }
@@ -95,7 +99,7 @@ function AttemptDetails({ attempt, graded, reviewKey }) {
                 <div className="review-issue-head">
                   <span className="review-issue-word" dir="rtl" lang="he">{w.word}</span>
                   <span className="review-issue-label">{w.score} · {wordLabel(w)}</span>
-                  {attempt.provider !== 'phonemes' && <span className="review-muted">heard <code>{w.phoneticHeard || '—'}</code></span>}
+                  {!byPhonemes(attempt) && <span className="review-muted">heard <code>{w.phoneticHeard || '—'}</code></span>}
                 </div>
                 {w.errorType !== 'Omission' && <SyllableProblems phonemes={w.phonemes} />}
               </li>
@@ -146,6 +150,7 @@ function AttemptCard({ attempt, reviewKey, onDeleted, startOpen = false }) {
         <span className="review-settings">
           {attempt.settings?.tradition === 'ashkenazic' ? 'Ashkenazic' : 'Sephardic'}
           {attempt.settings?.shevaMode === 'ignore' ? ' · sheva ignored' : ''}
+          {attempt.provider === 'phonemes-live' ? ' · live' : ''}
         </span>
         {graded.scores ? (
           <span className="review-score" style={{ color: scoreColor(graded.scores.pronunciation) }}>

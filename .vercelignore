@@ -1,0 +1,10 @@
+# Left out of `vercel deploy` uploads: the build downloads the phoneme model
+# (scripts/fetch-phoneme-model.mjs), and the experiment's models, recordings
+# and node_modules (GBs) aren't part of the app
+/experiments/
+/models/
+/voice-library/
+/.claude/
+/dist/
+node_modules
+.env*

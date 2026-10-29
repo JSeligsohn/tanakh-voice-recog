@@ -53,7 +53,7 @@ const settingsOf = meta => (typeof meta.settings === 'string' ? JSON.parse(meta.
 async function compareOne(meta) {
   const settings = settingsOf(meta)
   const words = splitVerseWords(meta.referenceText)
-  const byPhonemes = meta.provider === 'phonemes'
+  const byPhonemes = meta.provider === 'phonemes' || meta.provider === 'phonemes-live'
   const transcription = byPhonemes ? '' : typeof meta.content === 'string' ? parseTranscription(meta.content) : meta.content?.transcription ?? ''
   const current = byPhonemes
     ? gradeFindings(meta.phonemes, meta.referenceText, settings).words

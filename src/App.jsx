@@ -391,9 +391,10 @@ export default function App() {
   const [tradition, setTradition] = useState(() => localStorage.getItem('tanakh-tradition') ?? 'sephardic')
   const [shevaMode, setShevaMode] = useState(() => localStorage.getItem('tanakh-sheva-mode') ?? 'enforce')
   const [manualInput, setManualInput] = useState('')
-  // 'record' (read, then grade) or 'live' (each word graded as it's read;
-  // phoneme scorer only)
-  const [readingMode, setReadingMode] = useState(() => localStorage.getItem('tanakh-reading-mode') ?? 'record')
+  // 'live' (Word by word: each word graded as it's read; phoneme scorer
+  // only), the default for learning a verse, or 'record' (Whole verse: read
+  // it all, then the score)
+  const [readingMode, setReadingMode] = useState(() => localStorage.getItem('tanakh-reading-mode') ?? 'live')
 
   // Top-level tab navigation: 'practice' (recording UI) or 'progress' (dashboards)
   const [activeTab, setActiveTab] = useState('practice')
@@ -1031,27 +1032,28 @@ export default function App() {
               <span className="provider-label">Reading</span>
               <div className="provider-seg">
                 <button
-                  className={`provider-btn ${readingMode === 'record' ? 'provider-btn--active' : ''}`}
-                  onClick={() => setReadingMode('record')}
-                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
-                  title="Read the whole verse, then see how it went"
-                >
-                  Record
-                </button>
-                <button
                   className={`provider-btn ${readingMode === 'live' ? 'provider-btn--active' : ''}`}
                   onClick={() => { handleReset(); handleExitHistoryView(); setReadingMode('live') }}
                   disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
                   title="Each word lights up as you read it: green when it's right, red until it is"
                 >
-                  Live (beta)
+                  Word by word
+                </button>
+                <button
+                  className={`provider-btn ${readingMode === 'record' ? 'provider-btn--active' : ''}`}
+                  onClick={() => setReadingMode('record')}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="Read the whole verse, then see your score"
+                >
+                  Whole verse
                 </button>
               </div>
             </div>
           )}
 
           {provider === 'phonemes' && readingMode === 'live' && !viewingHistoryEntry ? (
-            <LiveReader key={pasuk.text} pasuk={pasuk} settings={{ tradition, shevaMode }} onReport={handleLiveReport} />
+            <LiveReader key={pasuk.text} pasuk={pasuk} settings={{ tradition, shevaMode }} onReport={handleLiveReport}
+              onWholeVerse={() => { handleReset(); setReadingMode('record') }} />
           ) : (
           <div className="practice-layout">
           <div className="practice-main">

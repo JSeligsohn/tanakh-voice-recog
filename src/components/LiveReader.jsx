@@ -27,8 +27,9 @@ const POPUP_SPEECH = 5
 // shows what was heard; tapping a red one while listening goes back to it.
 // It stops on its own when every word is right, or when the reader goes
 // quiet (END_WAIT, QUIET_STOP). When the reading ends, the whole recording is
-// scored as usual, and onReport opens that full report.
-export default function LiveReader({ pasuk, settings, onReport }) {
+// scored as usual, and onReport opens that full report. A verse read all
+// right offers the next step, the whole verse for a score (onWholeVerse).
+export default function LiveReader({ pasuk, settings, onReport, onWholeVerse }) {
   const words = splitVerseWords(pasuk.text)
   const [phase, setPhase] = useState('idle') // idle | connecting | listening | finishing | done | error
   const [states, setStates] = useState(() => words.map(blankState))
@@ -321,7 +322,7 @@ export default function LiveReader({ pasuk, settings, onReport }) {
             </div>
             {phase === 'error' && <p className="error-msg">{errorMsg}</p>}
             <button className="btn btn-record" onClick={handleStart}>
-              <span className="record-dot" /> Start live reading
+              <span className="record-dot" /> Start reading
             </button>
           </>
         )}
@@ -371,8 +372,16 @@ export default function LiveReader({ pasuk, settings, onReport }) {
                 {toWorkOn === 0 ? 'The full check found nothing to work on.' : `The full check found ${toWorkOn} word${toWorkOn === 1 ? '' : 's'} to work on.`}
               </p>
             )}
+            {allRight && (
+              <div className="live-next">
+                <p>Ready? Read the whole verse for a score.</p>
+                <button className="btn btn-record" onClick={onWholeVerse}>
+                  <span className="record-dot" /> Read the whole verse
+                </button>
+              </div>
+            )}
             <div className="done-actions">
-              {report && <button className="btn btn-done" onClick={() => onReport(report)}>See full report</button>}
+              {report && <button className={`btn ${allRight ? 'btn-reset' : 'btn-done'}`} onClick={() => onReport(report)}>See full report</button>}
               <button className="btn btn-reset" onClick={handleStart}>↺ Read again</button>
             </div>
           </div>

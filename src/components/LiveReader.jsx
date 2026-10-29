@@ -164,6 +164,16 @@ export default function LiveReader({ pasuk, settings, onFinished, onReport, onWh
     } else if (msg.type === 'final') {
       const audioUrl = URL.createObjectURL(msg.audio)
       setReport({ ...msg.report, audioUrl })
+      // The full report has the last word: each word now shows its verdict, so
+      // the verse and the report agree (live, a word is graded on a short
+      // stretch of audio, and a close call can come out the other way)
+      setStates(prev => prev.map((s, wi) => {
+        const flags = msg.flags.filter(f => f.wi === wi)
+        const real = flags.filter(f => !(f.kind === 'sheva-na' && f.partner === 'short'))
+        const skipped = real.some(f => f.kind === 'word' && f.test === 'skipped')
+        const status = skipped && s.status !== 'wrong' ? 'skipped' : real.length ? 'wrong' : 'correct'
+        return { ...s, status, flags }
+      }))
       setPhase('done')
       onFinished?.(msg.report, audioUrl)
     } else if (msg.type === 'error') {

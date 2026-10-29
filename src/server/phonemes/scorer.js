@@ -305,7 +305,7 @@ export function expectedUnits(text, settings = {}) {
         avEnding: last && a.letter === 'ו' && c === 'v' && /\u05B8[\u0591-\u05AF\u05BD]*י[\u0591-\u05AF\u05BD]*ו[\u0591-\u05AF\u05BD]*$/.test(word.replace(/־$/, '')),
       }
       const where = { word, wi, letter: a.letter, atomIndex: seg.atomIndex }
-      const vowelUnit = seg.vowel && vowelUnitFor(seg, where, segments[k + 1]?.consonant, segments[k - 1]?.shevaType === 'nach', fullVowels, k === segments.length - 1 || segments.slice(k + 1).every(x => !x.vowel))
+      const vowelUnit = seg.vowel && vowelUnitFor(seg, where, segments[k + 1]?.consonant, segments[k - 1]?.shevaType === 'nach', fullVowels, k === segments.length - 1 || segments.slice(k + 1).every(x => !x.vowel), k === segments.length - 2 && segments[k + 1].atom.letter === 'ה' && !segments[k + 1].consonant)
       const glideTokens = seg.vowel && (a.yudAfter ? GLIDE.yud : GLIDE[a.vowel])
       const glide = glideTokens && { kind: 'g', tokens: glideTokens.filter(has), ...where, optional: true }
       if (seg.patachGenuvah && vowelUnit) vowelUnit.genuvah = true
@@ -338,7 +338,7 @@ const PREFIX = new Set(['ו', 'ה', 'ל', 'ב', 'כ', 'מ', 'ש'])
 const CAN_LEAD = new Set(['b', 'v', 'p', 'f', 'k', 'ch', 'g', 'd', 't', 's', 'sh', 'z', 'ts'])
 const clusters = (c1, c2, afterNach) => !afterNach && CAN_LEAD.has(c1) && !!c2 && c1 !== c2
 
-function vowelUnitFor(seg, where, nextConsonant, afterNach, fullVowels, lastVowel) {
+function vowelUnitFor(seg, where, nextConsonant, afterNach, fullVowels, lastVowel, silentHeAfter) {
   const nikkud = seg.atom.vowel
   // a chataf is short and may be swallowed, except on a silent letter (א, ע),
   // where it is the whole syllable (אֲנִי "a-ni")
@@ -372,7 +372,9 @@ function vowelUnitFor(seg, where, nextConsonant, afterNach, fullVowels, lastVowe
     // לְךָ, "avikh" for אָבִיךָ): a tester's Ashkenazic reading dropped it four
     // times. Elsewhere a short, clearly said vowel often scores as low, so
     // other vowels aren't checked for this.
-    missable: !optional && lastVowel && nikkud === 'qamats' && seg.atom.letter === 'ך',
+    // a final kamatz, on ך (לְךָ) or before a silent ה (וַאֲבָרְכָה): left out,
+    // "va-a-va-RECH" (a tester's reading)
+    missable: !optional && lastVowel && nikkud === 'qamats' && (seg.atom.letter === 'ך' || !!silentHeAfter),
   }
 }
 
@@ -549,6 +551,10 @@ function soundDistance(units, heard) {
 
 // Cutoffs, tuned per model on the bench takes (rounds 1–2, with the sheva na
 // flags the user confirmed by ear counted as real).
+//   vetCoda: a ב with a silent sheva before another letter (אַבְרָם,
+//            וְאָהַבְתָּ): it sounds a little like "b" said right (2 of 9
+//            correct bench readings below −1, at −2.2 and −6.8; a tester's
+//            −1.6, −1.8), where "b" on purpose scored −8.6 and −6.8
 //   consonant, vowel, vowel-ou, vowel-missing, sheva-nach: flag a score below
 //            this (vowel-missing: the compare takes' dropped ־ךָ endings −7.9 to
 //            −4.8; correctly said endings on the bench, 3 of 33 below −4)
@@ -568,8 +574,8 @@ function soundDistance(units, heard) {
 //   sheva na sounds. Flagging it as short, from three deliberate "left out"
 //   takes that came out ə, flagged the user's natural verse readings.)
 const CUTOFFS = {
-  xlsr: { 'letter-missing': -4, letter: -3, syllable: -6.5, order: -1, 'end-vowel': 0.6, ending: -1, consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
-  zipa: { 'letter-missing': -4, letter: -3, 'letter-any': -7, swapped: -5, shevaFull: 0.8, syllable: -4.8, order: -1, 'end-vowel': 0.6, ending: -1, consonant: -1, vowel: -2.5, 'vowel-ou': -1, 'vowel-missing': -2.7, 'sheva-nach': -1.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -17, unclear: -5, different: 0.9 },
+  xlsr: { vetCoda: -3, 'letter-missing': -4, letter: -3, syllable: -6.5, order: -1, 'end-vowel': 0.6, ending: -1, consonant: 0, vowel: -2.2, 'vowel-ou': -1, 'vowel-missing': -4.5, 'sheva-nach': -2.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -35, unclear: -5, different: 0.9 },
+  zipa: { vetCoda: -3, 'letter-missing': -4, letter: -3, 'letter-any': -7, swapped: -5, shevaFull: 0.8, syllable: -4.8, order: -1, 'end-vowel': 0.6, ending: -1, consonant: -1, vowel: -2.5, 'vowel-ou': -1, 'vowel-missing': -2.7, 'sheva-nach': -1.5, said: 0.6, saidAfterStop: 0.2, some: 0.1, skipped: -17, unclear: -5, different: 0.9 },
 }
 export const FLAG_BELOW = CUTOFFS[MODEL_NAME.startsWith('zipa') ? 'zipa' : 'xlsr']
 
@@ -581,7 +587,7 @@ function shevaNaVerdict(trace, canCluster, releasedStop) {
   if (trace >= (releasedStop ? FLAG_BELOW.saidAfterStop : FLAG_BELOW.said)) return 'said'
   return trace >= FLAG_BELOW.some || !canCluster ? 'short' : 'left out'
 }
-export const isFlagged = s => ['word', 'syllable'].includes(s.kind) || (s.kind === 'sheva-na' ? s.partner !== 'said' : s.kind === 'end-vowel' ? s.trace >= FLAG_BELOW['end-vowel'] : s.llr < FLAG_BELOW[s.kind])
+export const isFlagged = s => ['word', 'syllable'].includes(s.kind) || (s.kind === 'sheva-na' ? s.partner !== 'said' : s.kind === 'end-vowel' ? s.trace >= FLAG_BELOW['end-vowel'] : s.llr < (s.coda ? FLAG_BELOW.vetCoda : FLAG_BELOW[s.kind]))
 
 // Score each tested sound against what a reader might say instead. Each test
 // re-aligns the whole verse with one unit changed, so the comparison is a
@@ -689,7 +695,7 @@ export function scoreContrasts(post, units, base = align(post, units), { lone = 
       const said = u.test === 'tav'
         ? Math.max(base.score, replace(i, 1, u, { kind: 'g', tokens: CONSONANT.s, word: u.word, wi: u.wi, atomIndex: u.atomIndex, optional: true }).score)
         : base.score
-      out.push({ ...at, kind: 'consonant', test: u.test, expected: u.sound, partner, llr: said - swap(i, { tokens: CONSONANT[partner] }).score })
+      out.push({ ...at, kind: 'consonant', test: u.test, expected: u.sound, partner, llr: said - swap(i, { tokens: CONSONANT[partner] }).score, ...(u.test === 'vet' && u.nach ? { coda: true } : {}) })
     }
     if (u.kind === 'c' && CLEAR_LETTERS.has(u.sound)) {
       // a letter left out, its vowel still said ("lo" for לְךָ: no "ch"). Only
@@ -790,7 +796,15 @@ export function scoreContrasts(post, units, base = align(post, units), { lone = 
       out.push({ ...at, kind: 'vowel-ou', test: u.vowelTest, expected: u.accepted[0], partner: u.ou, llr })
     }
     if (u.nach) {
-      const added = align(post, [...units.slice(0, i + 1), { kind: 'v', tokens: VOWELS, word: u.word }, ...units.slice(i + 1)])
+      // Before a sheva na (וְנִבְרְכוּ "niv-re-CHU"), the model often hears the
+      // sheva na's quick "e" ahead of its letter ("ni-ve-r-chu"), so a vowel
+      // counts as added only if the sheva na still has one of its own: two
+      // vowels, not one (correct bench readings were down to −3.7; a tester's
+      // two correct readings −3.8)
+      const after = units.slice(i + 1)
+      const na = after.findIndex(x => x.kind !== 'j')
+      if (after[na]?.kind === 'c' && after[na + 1]?.vowelTest === 'sheva-na' && after[na + 1].wi === u.wi) after[na + 1] = { ...after[na + 1], optional: false }
+      const added = align(post, [...units.slice(0, i + 1), { kind: 'v', tokens: VOWELS, word: u.word }, ...after])
       out.push({ ...at, kind: 'sheva-nach', test: 'sheva-nach', expected: 'silent', partner: 'a vowel', llr: base.score - added.score, heardAs: vowelQuality(post, added.spans[i + 1]) })
     }
   })

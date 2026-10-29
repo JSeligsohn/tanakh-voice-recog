@@ -27,7 +27,7 @@
 // experiments/phonemes/live-sim.mjs plays the bench's takes through it, and
 // live-boundaries.mjs measures the move-on signal.
 
-import { frameLogProbs, align, expectedUnits, junkUnit, scoreContrasts, isFlagged, soundFrames } from './scorer.js'
+import { frameLogProbs, align, expectedUnits, junkUnit, scoreContrasts, isFlagged, soundFrames, FLAG_BELOW } from './scorer.js'
 import { splitVerseWords } from '../../utils/hebrewRules.js'
 import { SpeechLevel, rmsOf } from '../../utils/speechLevel.js'
 
@@ -59,8 +59,16 @@ export const LIVE = {
 }
 
 // Checks that don't make a word red live: a sheva na that was only slightly
-// heard is the grader's least sure call (half a mistake in the full report)
-const LIVE_LENIENT = f => f.kind === 'sheva-na' && f.partner === 'short'
+// heard is the grader's least sure call (half a mistake in the full report);
+// and a sound scored within LIVE_MARGIN of its cutoff (0.5: on the bench, 32
+// false reds → 25, 28 mistakes missed live → 39; 1: 20 and 47). Live, a word is graded
+// on a short stretch of audio, and a call that close goes either way with
+// the stretch (a tester's הַשֵּׁם: "s" at −1.86 live, a pass in the full
+// report); the full report, the whole reading at once, still makes it.
+const LIVE_MARGIN = +(process.env.LIVE_MARGIN ?? 0.5)
+const MARGINAL = new Set(['consonant', 'letter', 'letter-any', 'letter-missing', 'swapped', 'vowel', 'vowel-ou', 'vowel-missing', 'sheva-nach', 'order', 'ending'])
+const LIVE_LENIENT = f => (f.kind === 'sheva-na' && f.partner === 'short') ||
+  (MARGINAL.has(f.kind) && f.llr >= (f.coda ? FLAG_BELOW.vetCoda : FLAG_BELOW[f.kind]) - LIVE_MARGIN)
 
 const junk = () => junkUnit(2)
 

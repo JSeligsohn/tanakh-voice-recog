@@ -15,7 +15,7 @@ import { gradeFindings } from './phonemeAssessment'
 // { stop, cancel, goTo, mute }.
 export async function startLiveReading({ referenceText, settings, follow = true, onEvent, onLevel }) {
   const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
-  let ctx, ws, finished = false
+  let ctx, ws, finished = false, closed = false
   // while a sound of our own plays (the mic would hear it): silence is sent
   // instead, and its loudness isn't counted as the reader's
   let mutedUntil = 0
@@ -38,19 +38,28 @@ export async function startLiveReading({ referenceText, settings, follow = true,
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/live`)
     ws.binaryType = 'arraybuffer'
     let streaming = false
+    // Audio from before the server is ready is kept and sent then: a reader
+    // who starts the moment they press Start would lose the first word
+    // (a tester's "…em" for הַשֵּׁם)
+    let waiting = []
     node.port.onmessage = ({ data: { pcm, rms } }) => {
-      if (!streaming) return
+      if (finished || closed) return
       const muted = performance.now() < mutedUntil
-      if (!muted) onLevel?.(rms)
       const chunk = muted ? new ArrayBuffer(pcm.byteLength) : pcm
       sent.push(chunk)
+      if (!streaming) { waiting.push(chunk); return }
+      if (!muted) onLevel?.(rms)
       if (ws.readyState === WebSocket.OPEN) ws.send(chunk)
     }
     ws.onopen = () => ws.send(JSON.stringify({ type: 'start', referenceText, settings, follow, tester: currentTester() }))
     ws.onmessage = e => {
       let msg
       try { msg = JSON.parse(e.data) } catch { return }
-      if (msg.type === 'ready') streaming = true
+      if (msg.type === 'ready') {
+        streaming = true
+        for (const chunk of waiting) ws.send(chunk)
+        waiting = []
+      }
       if (msg.type === 'final') {
         finished = true
         msg = { ...msg, report: gradeFindings(msg, referenceText, settings), audio: wavBlob(sent) }
@@ -59,6 +68,7 @@ export async function startLiveReading({ referenceText, settings, follow = true,
     }
     ws.onclose = () => {
       streaming = false
+      closed = true
       release()
       onEvent({ type: 'closed', finished })
     }

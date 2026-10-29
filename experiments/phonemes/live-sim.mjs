@@ -5,16 +5,18 @@
 //
 //   node live-sim.mjs [filter]      e.g. node live-sim.mjs shema   (default: verses and readings)
 //   HOLD=1 node live-sim.mjs ...    a wrong word must be read right before going on
+//   TAIL=0 node live-sim.mjs ...    no quiet after the take (default 3 s, as the app listens on)
 
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { items } from './bench/items.mjs'
 import { psukim } from '../../src/data/psukim.js'
-import { LiveTracker } from '../../src/server/phonemes/live.js'
 import { readWav, to16k, scoreRecording, frameLogProbs, align, expectedUnits } from '../../src/server/phonemes/scorer.js'
 import { splitVerseWords } from '../../src/utils/hebrewRules.js'
 
 // the app's model (not the experiment's default, xlsr): nothing here imports lib.mjs
+// LIVE_MODULE=<path>: another version of the tracker, to compare
+const { LiveTracker } = await import(process.env.LIVE_MODULE ?? '../../src/server/phonemes/live.js')
 const textOf = item => item.text ?? psukim.find(p => p.id === item.pasuk).text
 const DIR = new URL('./data/bench/', import.meta.url).pathname
 const filter = process.argv[2]
@@ -31,7 +33,10 @@ for (const { file, item, kind } of takes) {
   const text = textOf(item)
   const settings = { tradition: item.trad === 'ashkenazic' ? 'ashkenazic' : 'sephardic' }
   const { samples: raw, rate } = readWav(await readFile(join(DIR, file)))
-  const samples = to16k(raw, rate)
+  // the reader stops, and the microphone listens on (TAIL seconds of quiet, default 3)
+  const read = to16k(raw, rate), tail = Math.round(16000 * +(process.env.TAIL ?? 3))
+  const samples = new Float32Array(read.length + tail)
+  samples.set(read)
   const tracker = new LiveTracker(text, settings, { follow: !process.env.HOLD })
   const log = []
   let checks = 0, busy = 0

@@ -14,6 +14,10 @@
 // checks, on the same alignment. The words before keep it from drifting: on
 // its own, a word lined up in a fast reader's run-on audio lost its start.
 //
+// A word read wrong (or run together with the next, read fast) can hide the
+// next word's start, so the reader goes on without the tracker; at the next
+// pause, every word heard since is graded together (gradeHeard).
+//
 // A wrong word stays current: a pause, then another try, is graded again over
 // the same window, so the best try counts and a word sounded out in pieces
 // ("be-re… shit") can still come out right. With `follow` (the default), a
@@ -43,6 +47,9 @@ export const LIVE = {
   // (bench verses: before the next word starts, 1–4% of checks pass this;
   // 0.2 s into it 48%, 0.3 s 63%, 0.6 s 79%)
   moveOn: 1,
+  // seconds on one word after which a pause grades every word heard since
+  // (gradeHeard): the reader likely went on without the tracker
+  stuck: 1,
   // words already read lined up before the current one
   context: 2,
   // the longest window, in seconds: past it, the words before are dropped
@@ -75,8 +82,10 @@ export class LiveTracker {
     // voice (a fan, breathing) doesn't keep a pause from counting
     this.level = new SpeechLevel({ above: 0.1 })
     this.checkedTo = 0
-    // the last sound already graded, so a pause isn't graded twice
+    // the last sound already graded, so a pause isn't graded twice; and the
+    // last one looked past for words read since (gradeHeard)
     this.gradedTo = 0
+    this.heardTo = 0
   }
 
   get done() { return this.current >= this.words.length }
@@ -194,13 +203,24 @@ export class LiveTracker {
 
     const A = this.lineUp([...before, wi])
     const a = align(post, A)
-    const B = next === null ? null : this.lineUp([...before, wi], this.onsetUnits(next))
-    const b = B && align(post, B)
     // (holding a wrong word, going on doesn't end a try: only a pause does)
     const holding = !this.follow && this.state[wi].status === 'wrong'
-    const movedOn = !holding && !!b && b.score - a.score >= LIVE.moveOn
+    let B = null, b = null, movedOn = false
+    if (next !== null && !holding) {
+      B = this.lineUp([...before, wi], this.onsetUnits(next))
+      b = align(post, B)
+      movedOn = b.score - a.score >= LIVE.moveOn
+    }
     const paused = silentFor >= LIVE.pause && w.toSample(lastSound) > this.gradedTo
     if (process.env.LIVE_DEBUG) console.log(`    [${(w.end / RATE).toFixed(2)}s] w${wi} after ${before.length}  B−A ${b ? (b.score - a.score).toFixed(1) : '-'}  silent ${silentFor.toFixed(2)}${movedOn ? '  MOVED' : ''}${paused ? '  PAUSED' : ''}`)
+    // A pause after a long time on this word, following: grade every word
+    // heard since it, together (once per pause, even if this word was graded
+    // when the pause began)
+    const stuck = silentFor >= LIVE.pause && w.end - (this.starts[wi] ?? 0) > LIVE.stuck * RATE
+    if (!movedOn && !final && this.follow && next !== null && stuck && w.toSample(lastSound) > this.heardTo) {
+      this.heardTo = w.toSample(lastSound)
+      return this.gradeHeard(w, before, lastSound)
+    }
     // (at the end, a word not gone on from is graded by gradeRest)
     if (!movedOn && (!paused || final)) return []
 
@@ -228,6 +248,59 @@ export class LiveTracker {
         if (movedOn) this.gradedTo = this.starts[next]
       }
       events.push({ type: 'current', wi: this.current })
+    }
+    return events
+  }
+
+  // At a pause: the reader may be several words on. A fast reader's mistake
+  // (or words run together) never shows the next word's start, so the
+  // current word was waiting, while the reader went on. The words from here
+  // to the end are lined up together, as the full scorer does a verse; those
+  // heard are graded, and the reader is followed to the last one heard: past
+  // it if it's right, or on it, for another try, if it isn't. Heard: lined up
+  // before the last sound. A word not read yet is squeezed into the silence
+  // after it (or left out); grading those too made 181 bench words red.
+  gradeHeard(w, before, lastSound) {
+    const { post } = w
+    const wi = this.current
+    const rest = this.words.map((_, k) => k).slice(wi)
+    const units = this.lineUp([...before, ...rest])
+    const flags = scoreContrasts(post, units, undefined, { lone: before.length === 0 && rest.length === 1 }).filter(isFlagged)
+    const leftOut = k => flags.some(f => f.wi === k && f.kind === 'word' && f.test === 'skipped')
+    this.gradedTo = w.toSample(lastSound)
+    // where each word was heard, lined up without the ones left out
+    const kept = units.filter(u => u.kind === 'j' || !leftOut(u.wi))
+    const { spans } = align(post, kept)
+    const spansOf = k => kept.map((u, i) => (u.wi === k && u.kind !== 'j' ? spans[i] : null)).filter(Boolean)
+    // (the current word counts if it was started; one after it must be heard
+    // whole: before the last sound, and not too unclear to have been said)
+    const nothing = k => flags.some(f => f.wi === k && f.kind === 'word' && f.test === 'unclear')
+    const heard = rest.filter(k => {
+      const sp = spansOf(k)
+      if (leftOut(k) || !sp.length) return false
+      return k === wi ? sp[0][0] <= lastSound : sp.at(-1)[1] <= lastSound + 1 && !nothing(k)
+    })
+    // nothing of it heard (a pause before the word was started): not a try
+    if (!heard.length) return []
+    // the words heard in a row from here (a gap: not read yet, or lost)
+    let last = heard[0]
+    while (heard.includes(last + 1)) last++
+    if (heard[0] !== wi) return []
+    const events = []
+    for (let k = wi; k <= last; k++) {
+      events.push(this.grade(k, flags.filter(f => f.wi === k)))
+      const sp = spansOf(k)
+      if (sp.length) this.starts[k] = w.toSample(sp[0][0])
+    }
+    const right = this.state[last].status === 'correct'
+    const to = right ? last + 1 : last
+    if (to !== this.current) {
+      this.current = to
+      if (right && to < this.words.length) {
+        const sp = spansOf(last)
+        this.starts[to] = sp.length ? w.toSample(sp.at(-1)[1]) : w.end
+      }
+      events.push({ type: 'current', wi: to })
     }
     return events
   }

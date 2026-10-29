@@ -745,11 +745,16 @@ export default function App() {
     if (window.innerWidth > 640) setShowHistory(true)
   }
 
-  // The live reader's full report → the usual results
-  function handleLiveReport({ words, scores, rawSegment }) {
+  // A Word by word reading finished: into the Attempts list, with its recording
+  function handleLiveFinished({ words, scores, rawSegment }, audioUrl) {
+    addToHistory(reconcileWords(gradedWordsText(pasuk.text), words), scores, audioUrl, [rawSegment])
+  }
+
+  // Its full report → the usual results
+  function handleLiveReport({ words, scores, rawSegment, audioUrl }) {
     const reconciled = reconcileWords(gradedWordsText(pasuk.text), words)
     setCurrentRawSegments([rawSegment])
-    addToHistory(reconciled, scores, null, [rawSegment])
+    setCurrentAudioUrl(audioUrl ?? null)
     setReadingMode('record')
     setPhase('done')
     setResultsView('score')
@@ -1052,7 +1057,7 @@ export default function App() {
           )}
 
           {provider === 'phonemes' && readingMode === 'live' && !viewingHistoryEntry ? (
-            <LiveReader key={pasuk.text} pasuk={pasuk} settings={{ tradition, shevaMode }} onReport={handleLiveReport}
+            <LiveReader key={pasuk.text} pasuk={pasuk} settings={{ tradition, shevaMode }} onFinished={handleLiveFinished} onReport={handleLiveReport}
               onWholeVerse={() => { handleReset(); setReadingMode('record') }} />
           ) : (
           <div className="practice-layout">

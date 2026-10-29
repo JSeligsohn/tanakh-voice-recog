@@ -27,9 +27,10 @@ const POPUP_SPEECH = 5
 // shows what was heard; tapping a red one while listening goes back to it.
 // It stops on its own when every word is right, or when the reader goes
 // quiet (END_WAIT, QUIET_STOP). When the reading ends, the whole recording is
-// scored as usual, and onReport opens that full report. A verse read all
-// right offers the next step, the whole verse for a score (onWholeVerse).
-export default function LiveReader({ pasuk, settings, onReport, onWholeVerse }) {
+// scored as usual: onFinished gets that full report and the recording (for
+// the Attempts list), and onReport opens it. A verse read all right offers
+// the next step, the whole verse for a score (onWholeVerse).
+export default function LiveReader({ pasuk, settings, onFinished, onReport, onWholeVerse }) {
   const words = splitVerseWords(pasuk.text)
   const [phase, setPhase] = useState('idle') // idle | connecting | listening | finishing | done | error
   const [states, setStates] = useState(() => words.map(blankState))
@@ -161,8 +162,10 @@ export default function LiveReader({ pasuk, settings, onReport, onWholeVerse }) 
       movedAtRef.current = performance.now()
       setStates(prev => prev.map((s, i) => (i === msg.wi ? { status: msg.status, wrongTries: msg.wrongTries, flags: msg.flags } : s)))
     } else if (msg.type === 'final') {
-      setReport(msg.report)
+      const audioUrl = URL.createObjectURL(msg.audio)
+      setReport({ ...msg.report, audioUrl })
       setPhase('done')
+      onFinished?.(msg.report, audioUrl)
     } else if (msg.type === 'error') {
       setErrorMsg(msg.error)
       setPhase('error')

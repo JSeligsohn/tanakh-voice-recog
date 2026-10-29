@@ -137,6 +137,18 @@ export function freeDecode({ lp, T }) {
   return out.join(' ')
 }
 
+// Which frames the model hears a sound in (its best token isn't the blank or
+// a silent symbol): 1 per frame, for telling speech from a pause
+export function soundFrames({ lp, T }) {
+  const out = new Uint8Array(T)
+  for (let t = 0; t < T; t++) {
+    let best = 0
+    for (let v = 1; v < V; v++) if (lp[t * V + v] > lp[t * V + best]) best = v
+    out[t] = best !== BLANK && !SILENT.includes(best) ? 1 : 0
+  }
+  return out
+}
+
 // --- Expected sounds ---------------------------------------------------------------
 
 // What the model hears unaided over frames [from, to), as our coarse sounds
@@ -585,7 +597,9 @@ export const isFlagged = s => ['word', 'syllable'].includes(s.kind) || (s.kind =
 //   sheva-na    said vs left out, then said / short / left out (shevaNaVerdict)
 //   sheva-nach  silent vs a vowel added after the letter
 //   word        a word left out (then none of its sounds are scored)
-export function scoreContrasts(post, units, base = align(post, units)) {
+//   (lone: one word on its own, as the live reader grades it: still checked
+//   for being a different word or unclear, which otherwise needs two words)
+export function scoreContrasts(post, units, base = align(post, units), { lone = false } = {}) {
   const out = []
   // Words first. A skipped word: the verse fits far better without it. It's
   // taken out (one at a time, worst first) before anything else is scored, so
@@ -595,7 +609,8 @@ export function scoreContrasts(post, units, base = align(post, units)) {
   const wordsOf = us => [...new Set(us.filter(u => u.kind !== 'j').map(u => u.wi))]
   const without = (us, w) => us.filter(u => u.kind === 'j' || u.wi !== w)
   const skipped = new Set(), unclear = new Set()
-  if (wordsOf(units).length > 1) {
+  const many = wordsOf(units).length > 1
+  if (many) {
     for (;;) {
       const score = align(post, units).score
       const worst = wordsOf(units).map(w => [w, score - align(post, without(units, w)).score]).sort((a, b) => a[1] - b[1])[0]
@@ -604,6 +619,8 @@ export function scoreContrasts(post, units, base = align(post, units)) {
       out.push({ i: -1, wi: worst[0], letter: '', word: units.find(u => u.wi === worst[0]).word, kind: 'word', test: 'skipped', expected: 'said', partner: 'left out', llr: worst[1] })
       units = without(units, worst[0])
     }
+  }
+  if (many || lone) {
     base = align(post, units)
     for (const w of wordsOf(units)) {
       const llr = base.score - align(post, without(units, w)).score

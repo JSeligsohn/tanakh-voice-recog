@@ -3,6 +3,10 @@
   "functions": {
     "api/phonemes.js": {
       "includeFiles": "{models/zipa-s/model.int8.onnx,models/zipa-s/tokens.txt,node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**}"
+    },
+    "api/live.js": {
+      "includeFiles": "{models/zipa-s/model.int8.onnx,models/zipa-s/tokens.txt,node_modules/onnxruntime-node/bin/napi-v6/linux/x64/**}",
+      "maxDuration": 300
     }
   }
 }

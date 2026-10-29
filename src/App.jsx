@@ -15,6 +15,7 @@ import { currentTester } from './utils/tester'
 import HistorySidebar from './components/HistorySidebar'
 import TranscriptionCheck from './components/TranscriptionCheck'
 import VoiceLab from './components/VoiceLab'
+import LiveReader from './components/LiveReader'
 import { waitForAudio, MIC_CONSTRAINTS, RECORDER_OPTIONS } from './utils/micReady'
 import { checkRecording } from './utils/recordingCheck'
 import { entrySettings, settingsDiff } from './utils/historySettings'
@@ -390,6 +391,9 @@ export default function App() {
   const [tradition, setTradition] = useState(() => localStorage.getItem('tanakh-tradition') ?? 'sephardic')
   const [shevaMode, setShevaMode] = useState(() => localStorage.getItem('tanakh-sheva-mode') ?? 'enforce')
   const [manualInput, setManualInput] = useState('')
+  // 'record' (read, then grade) or 'live' (each word graded as it's read;
+  // phoneme scorer only)
+  const [readingMode, setReadingMode] = useState(() => localStorage.getItem('tanakh-reading-mode') ?? 'record')
 
   // Top-level tab navigation: 'practice' (recording UI) or 'progress' (dashboards)
   const [activeTab, setActiveTab] = useState('practice')
@@ -403,6 +407,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem('tanakh-provider', provider) }, [provider])
   useEffect(() => { localStorage.setItem('tanakh-tradition', tradition) }, [tradition])
   useEffect(() => { localStorage.setItem('tanakh-sheva-mode', shevaMode) }, [shevaMode])
+  useEffect(() => { localStorage.setItem('tanakh-reading-mode', readingMode) }, [readingMode])
 
   const recognizerRef = useRef(null)
   const cancelTtsRef = useRef(null)
@@ -739,6 +744,19 @@ export default function App() {
     if (window.innerWidth > 640) setShowHistory(true)
   }
 
+  // The live reader's full report → the usual results
+  function handleLiveReport({ words, scores, rawSegment }) {
+    const reconciled = reconcileWords(gradedWordsText(pasuk.text), words)
+    setCurrentRawSegments([rawSegment])
+    addToHistory(reconciled, scores, null, [rawSegment])
+    setReadingMode('record')
+    setPhase('done')
+    setResultsView('score')
+    setScores(scores)
+    setWordResults(reconciled)
+    if (window.innerWidth > 640) setShowHistory(true)
+  }
+
   function handleCancel() {
     clearTimeout(prepareTimerRef.current)
     discardMediaRecorder()
@@ -1008,6 +1026,33 @@ export default function App() {
             </div>
           )}
 
+          {provider === 'phonemes' && (
+            <div className="provider-selector">
+              <span className="provider-label">Reading</span>
+              <div className="provider-seg">
+                <button
+                  className={`provider-btn ${readingMode === 'record' ? 'provider-btn--active' : ''}`}
+                  onClick={() => setReadingMode('record')}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="Read the whole verse, then see how it went"
+                >
+                  Record
+                </button>
+                <button
+                  className={`provider-btn ${readingMode === 'live' ? 'provider-btn--active' : ''}`}
+                  onClick={() => { handleReset(); handleExitHistoryView(); setReadingMode('live') }}
+                  disabled={phase === 'recording' || phase === 'preparing' || phase === 'processing'}
+                  title="Each word lights up as you read it: green when it's right, red until it is"
+                >
+                  Live (beta)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {provider === 'phonemes' && readingMode === 'live' && !viewingHistoryEntry ? (
+            <LiveReader key={pasuk.text} pasuk={pasuk} settings={{ tradition, shevaMode }} onReport={handleLiveReport} />
+          ) : (
           <div className="practice-layout">
           <div className="practice-main">
           <div className="pasuk-card" ref={pasukCardRef}>
@@ -1318,6 +1363,7 @@ export default function App() {
             )}
           </aside>
           </div>
+          )}
 
           {displayRawSegments.length > 0 && (
             <div className="debug-panel">

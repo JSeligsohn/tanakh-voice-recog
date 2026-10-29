@@ -17,9 +17,25 @@ function localApi() {
       const env = loadEnv(server.config.mode, process.cwd(), '')
       for (const name of SERVER_ENV) if (env[name]) process.env[name] = env[name]
 
+      // The live reader's WebSocket (api/live.js in production). Other upgrades,
+      // like Vite's own hot reload, are left alone.
+      let liveSockets
+      server.httpServer?.on('upgrade', async (req, socket, head) => {
+        if (!req.url?.match(/^\/api\/live(?:\?|$)/)) return
+        try {
+          const { WebSocketServer } = await import('ws')
+          liveSockets ??= new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 })
+          const { handleLiveSocket } = await server.ssrLoadModule('/src/server/liveSocket.js')
+          liveSockets.handleUpgrade(req, socket, head, ws => handleLiveSocket(ws, req))
+        } catch (err) {
+          server.config.logger.error(`[local-api] ${req.url}: ${err.stack ?? err}`)
+          socket.destroy()
+        }
+      })
+
       server.middlewares.use(async (req, res, next) => {
         const match = req.url?.match(/^\/api\/([\w-]+)(?:\?|$)/)
-        if (!match) return next()
+        if (!match || match[1] === 'live') return next()
         try {
           const { default: handler } = await server.ssrLoadModule(`/api/${match[1]}.js`)
           const chunks = []
